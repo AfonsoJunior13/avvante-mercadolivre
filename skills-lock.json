@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "mercado-libre": {
+      "source": "membranedev/application-skills",
+      "sourceType": "github",
+      "skillPath": "skills/mercado-libre/SKILL.md",
+      "computedHash": "6b6195bb0e5769b57f97841375908ccb4d112a5b57cbde3ca336ee91577c270e"
+    }
+  }
+}

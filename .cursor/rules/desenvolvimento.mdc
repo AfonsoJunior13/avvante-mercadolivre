@@ -1,0 +1,89 @@
+---
+description: Regras de desenvolvimento da integração Horus × Mercado Livre
+alwaysApply: true
+---
+
+# Desenvolvimento — Horus × Mercado Livre
+
+Leia antes de alterar código: `.cursor/docs/CONTEXTO-IA.md`, `.cursor/docs/ARQUITETURA.md` e `.cursor/docs/OAUTH-TOKEN.md`.
+
+## Identidade do projeto
+
+- Serviço **Node.js worker** (sem API HTTP): sync batch ML → Oracle Horus via `node-cron`.
+- Entry point: `src/app.js` → `src/jobs/execJobs.js`.
+- Stack: CommonJS, axios, oracledb (Thick), dotenv.
+- Responder sempre em **português (PT-BR)**.
+
+## Arquitetura e camadas
+
+Respeitar a separação existente:
+
+```
+jobs/execJobs.js  →  services/{dominio}/*.js  →  repositories/*.js  →  PRC_MLAPI_* (Oracle)
+```
+
+| Camada | Responsabilidade |
+|--------|------------------|
+| `services/**/get*.js` | Chamadas HTTP à API ML (axios + Bearer token) |
+| `services/**/{dominio}s.js` | Orquestração e transformação dos dados |
+| `repositories/*.js` | Execução de procedures Oracle |
+| `src/oracle/*.prc` | Regras de negócio, IDs e commit |
+
+**Não** fazer INSERT/UPDATE direto no Node — usar procedures `PRC_MLAPI_*`.
+
+## Padrões obrigatórios
+
+### Token OAuth
+
+Todo service que chama a API ML deve obter token via `getToken.getToken()`:
+
+```javascript
+const resToken = await getToken.getToken();
+const access_token = resToken[0].MLCN_ACCESS_TOKEN;
+```
+
+Credenciais OAuth ficam em `MERC_LIVRE_CONFIG` (Oracle), não no `.env`.
+
+### Repositories
+
+- `getConnection()` → `execute` → `connection.close()` no `finally`.
+- Sempre passar `P_TRANSACTION: 0` nas procedures.
+- Erros Oracle `errorNum === 20000` → `tratarErroOracle()` de `utils/oracleErrorHandler.js`.
+- Usar `process.env.UNIDADE_EMPRESARIAL_ID` quando a procedure exigir unidade.
+
+### Novo domínio sincronizado
+
+1. DDL em `src/oracle/` (`.tab`, `.prc`, `.vw` se necessário)
+2. `repositories/{entidade}Repository.js`
+3. `services/{entidade}/get{Entidade}.js` + `{entidade}s.js`
+4. Registrar job em `src/jobs/execJobs.js` (função + cron + `Iniciar()`)
+5. Atualizar docs em `.cursor/docs/`
+
+## Escopo e estilo de código
+
+- **Diff mínimo** — não refatorar código não relacionado à tarefa.
+- **Sem over-engineering** — evitar abstrações desnecessárias.
+- **Convenções existentes** — nomes em português nos domínios (`ordens`, `produtos`); campos ML em inglês; prefixos Oracle `MLOR_`, `MLPD_`, `MLCN_`.
+- Comentários só para lógica de negócio não óbvia.
+- Não adicionar testes sem solicitação explícita.
+
+## Configuração e segurança
+
+- `.env`: apenas `DB_USER`, `DB_PASSWORD`, `DB_CONNECT`, `UNIDADE_EMPRESARIAL_ID`.
+- **Nunca** commitar `.env`, `src/error.log` ou credenciais.
+- OAuth: seguir `.cursor/docs/OAUTH-TOKEN.md` (body no POST, Bearer no header, `redirect_uri` estática).
+- Site fixo: **MLB** (Brasil) — `sites/MLB/...`.
+
+## Armadilhas conhecidas
+
+- `findToken.js`: `code_verifier` é placeholder — PKCE exige implementação real se habilitado no app ML.
+- `ordens.js`: SKU/GTIN dos itens estão fixos em `'0'`.
+- `database.js`: caminho Oracle Client hardcoded — ajustar por ambiente.
+- Uma instância = uma `UNIDADE_EMPRESARIAL_ID`.
+- Sync é **pull** (polling); não há webhooks.
+
+## Git
+
+- Commits e push **somente quando o usuário pedir**.
+- Não alterar `git config`.
+- Não usar `--force` em main/master sem confirmação explícita.
