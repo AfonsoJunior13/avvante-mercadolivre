@@ -1,0 +1,15 @@
+version: '3.9'
+services:
+  oracle-db:
+    image: gvenzl/oracle-xe:21.3.0
+    container_name: oracle-xe-mercadolivre
+    ports:
+      - "1521:1521"   # Porta do listener Oracle      
+    environment:
+      ORACLE_PASSWORD: Avvante@2025 
+      ORACLE_CHARACTERSET: WE8ISO8859P1     
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+
+volumes:
+  oracle-data:

@@ -1,0 +1,58 @@
+﻿create table HORUS.MERC_LIVRE_CATEGORIA
+(
+  merc_livre_categoria_id VARCHAR2(20) not null,
+  mlca_id                 VARCHAR2(100),
+  mlca_name               VARCHAR2(500),
+  usuario_inclusao        VARCHAR2(20),
+  origem_alteracao        VARCHAR2(12),
+  data_alteracao          DATE,
+  usuario_alteracao       VARCHAR2(20),
+  origem_exclusao         VARCHAR2(12),
+  data_exclusao           DATE,
+  usuario_exclusao        VARCHAR2(20),
+  origem_recuperacao      VARCHAR2(12),
+  data_recuperacao        DATE,
+  usuario_recuperacao     VARCHAR2(20),
+  status                  VARCHAR2(15),
+  data_inclusao           DATE
+)
+tablespace USERS
+  pctfree 10
+  initrans 1
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table HORUS.MERC_LIVRE_CATEGORIA
+  add constraint PK_MERC_LIVRE_CATEGORIA_ID primary key (MERC_LIVRE_CATEGORIA_ID)
+  using index
+  tablespace USERS
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table HORUS.MERC_LIVRE_CATEGORIA
+  add constraint UK_MLCA_ID unique (MLCA_ID)
+  using index
+  tablespace USERS
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+

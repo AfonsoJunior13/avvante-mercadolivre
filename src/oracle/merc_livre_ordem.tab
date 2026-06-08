@@ -1,0 +1,74 @@
+﻿create table HORUS.MERC_LIVRE_ORDEM
+(
+  merc_livre_ordem_id    VARCHAR2(20) not null,
+  unidade_empresarial_id VARCHAR2(20),
+  mlor_order_id          VARCHAR2(100),
+  mlor_status            VARCHAR2(200),
+  mlor_date_created      DATE,
+  mlor_date_closed       DATE,
+  mlor_valor             NUMBER(10,2),
+  mlor_endereco          VARCHAR2(500),
+  mlor_numero            VARCHAR2(10),
+  mlor_complemento       VARCHAR2(500),
+  mlor_bairro            VARCHAR2(200),
+  mlor_cidade            VARCHAR2(200),
+  mlor_uf                VARCHAR2(100),
+  mlor_cep               VARCHAR2(10),
+  usuario_inclusao       VARCHAR2(20),
+  origem_alteracao       VARCHAR2(12),
+  data_alteracao         DATE,
+  usuario_alteracao      VARCHAR2(20),
+  origem_exclusao        VARCHAR2(12),
+  data_exclusao          DATE,
+  usuario_exclusao       VARCHAR2(20),
+  origem_recuperacao     VARCHAR2(12),
+  data_recuperacao       DATE,
+  usuario_recuperacao    VARCHAR2(20),
+  status                 VARCHAR2(15),
+  data_inclusao          DATE,
+  mlor_nome              VARCHAR2(200),
+  mlor_cpf_cnpj          VARCHAR2(14),
+  mlor_vlr_frete         NUMBER(10,2),
+  mlor_vlr_taxa_ml       NUMBER(10,2),
+  mlor_desconto          NUMBER(10,2)
+)
+tablespace USERS
+  pctfree 10
+  initrans 1
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table HORUS.MERC_LIVRE_ORDEM
+  add constraint PK_MERC_LIVRE_ORDEM_ID primary key (MERC_LIVRE_ORDEM_ID)
+  using index
+  tablespace USERS
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table HORUS.MERC_LIVRE_ORDEM
+  add constraint UK_MLOR_ORDER_ID unique (MLOR_ORDER_ID)
+  using index
+  tablespace USERS
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+

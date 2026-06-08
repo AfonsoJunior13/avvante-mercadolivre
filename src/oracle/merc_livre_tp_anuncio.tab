@@ -1,0 +1,58 @@
+﻿create table HORUS.MERC_LIVRE_TP_ANUNCIO
+(
+  merc_livre_tp_anuncio_id VARCHAR2(20) not null,
+  mlta_id                  VARCHAR2(100),
+  mlta_name                VARCHAR2(500),
+  usuario_inclusao         VARCHAR2(20),
+  origem_alteracao         VARCHAR2(12),
+  data_alteracao           DATE,
+  usuario_alteracao        VARCHAR2(20),
+  origem_exclusao          VARCHAR2(12),
+  data_exclusao            DATE,
+  usuario_exclusao         VARCHAR2(20),
+  origem_recuperacao       VARCHAR2(12),
+  data_recuperacao         DATE,
+  usuario_recuperacao      VARCHAR2(20),
+  status                   VARCHAR2(15),
+  data_inclusao            DATE
+)
+tablespace USERS
+  pctfree 10
+  initrans 1
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table HORUS.MERC_LIVRE_TP_ANUNCIO
+  add constraint PK_MERC_LIVRE_TP_ANUNCIO_ID primary key (MERC_LIVRE_TP_ANUNCIO_ID)
+  using index
+  tablespace USERS
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table HORUS.MERC_LIVRE_TP_ANUNCIO
+  add constraint UK_MLTA_ID unique (MLTA_ID)
+  using index
+  tablespace USERS
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+

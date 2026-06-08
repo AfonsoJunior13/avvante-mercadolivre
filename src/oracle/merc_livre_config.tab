@@ -1,0 +1,36 @@
+﻿create table HORUS.MERC_LIVRE_CONFIG
+(
+  merc_livre_param_id    VARCHAR2(20),
+  unidade_empresarial_id VARCHAR2(20),
+  mlcn_client_id         VARCHAR2(500),
+  mlcn_client_secret     VARCHAR2(500),
+  mlcn_code              VARCHAR2(500),
+  mlcn_redirect_uri      VARCHAR2(500),
+  mlcn_token             VARCHAR2(500),
+  mlcn_access_token      VARCHAR2(500),
+  mlcn_user_id           VARCHAR2(500),
+  usuario_inclusao       VARCHAR2(20),
+  origem_alteracao       VARCHAR2(12),
+  data_alteracao         DATE,
+  usuario_alteracao      VARCHAR2(20),
+  origem_exclusao        VARCHAR2(12),
+  data_exclusao          DATE,
+  usuario_exclusao       VARCHAR2(20),
+  origem_recuperacao     VARCHAR2(12),
+  data_recuperacao       DATE,
+  usuario_recuperacao    VARCHAR2(20),
+  status                 VARCHAR2(15),
+  mlcn_token_dt_val      DATE
+)
+tablespace USERS
+  pctfree 10
+  initrans 1
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+

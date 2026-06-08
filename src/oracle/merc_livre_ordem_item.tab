@@ -1,0 +1,49 @@
+﻿create table HORUS.MERC_LIVRE_ORDEM_ITEM
+(
+  merc_livre_ordem_item_id VARCHAR2(20) not null,
+  mloi_order_id            VARCHAR2(100),
+  mloi_produto_id          VARCHAR2(100),
+  mloi_quantity            NUMBER(10,2),
+  mloi_unit_price          NUMBER(10,2),
+  mloi_sku                 VARCHAR2(200),
+  mloi_gtin                VARCHAR2(200),
+  mloi_sale_fee            NUMBER(10,2),
+  usuario_inclusao         VARCHAR2(20),
+  origem_alteracao         VARCHAR2(12),
+  data_alteracao           DATE,
+  usuario_alteracao        VARCHAR2(20),
+  origem_exclusao          VARCHAR2(12),
+  data_exclusao            DATE,
+  usuario_exclusao         VARCHAR2(20),
+  origem_recuperacao       VARCHAR2(12),
+  data_recuperacao         DATE,
+  usuario_recuperacao      VARCHAR2(20),
+  status                   VARCHAR2(15),
+  data_inclusao            DATE
+)
+tablespace USERS
+  pctfree 10
+  initrans 1
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table HORUS.MERC_LIVRE_ORDEM_ITEM
+  add constraint PK_MERC_LIVRE_ORDEM_ITEM_ID primary key (MERC_LIVRE_ORDEM_ITEM_ID)
+  using index
+  tablespace USERS
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+
