@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": "skills/mercado-libre/SKILL.md",
       "computedHash": "6b6195bb0e5769b57f97841375908ccb4d112a5b57cbde3ca336ee91577c270e"
+    },
+    "mercado-pago": {
+      "source": "membranedev/application-skills",
+      "sourceType": "github",
+      "skillPath": "skills/mercado-pago/SKILL.md",
+      "computedHash": "ada3e5afa87441e162108268127ec9c27ea6fc1a9b11da27e01396407a882bb7"
     }
   }
 }
