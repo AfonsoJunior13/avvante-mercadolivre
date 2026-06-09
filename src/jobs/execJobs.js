@@ -59,20 +59,20 @@ async function ordensSave() {
 }
 
 async function Iniciar() {
-  //console.log(`<< INICIO ${new Date().toLocaleString()} >>`);
+  console.log(`<< INICIO ${new Date().toLocaleString()} >>`);
   await refreshToken();
   await tpAnuncioSave();
   await categoriasSave();
   await produtosSave();
   await ordensSave();
-  //console.log(`<< FIM ${new Date().toLocaleString()} >>`);
+  console.log(`<< FIM ${new Date().toLocaleString()} >>`);
 }
 
 // Executa imediatamente
 Iniciar();
 
-cron.schedule('*/30 * * * *', refreshToken); // 30 minutos
-cron.schedule('0 */12 * * *', tpAnuncioSave); // 12 horas
-cron.schedule('0 */12 * * *', categoriasSave); // 12 horas
-cron.schedule('*/5 * * * *', produtosSave); // 5 minutos
-cron.schedule('*/5 * * * *', ordensSave); // 5 minutos
+//cron.schedule('*/30 * * * *', refreshToken); // 30 minutos
+//cron.schedule('0 */12 * * *', tpAnuncioSave); // 12 horas
+//cron.schedule('0 */12 * * *', categoriasSave); // 12 horas
+//cron.schedule('*/5 * * * *', produtosSave); // 5 minutos
+//cron.schedule('*/5 * * * *', ordensSave); // 5 minutos

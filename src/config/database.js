@@ -2,9 +2,16 @@ const oracledb = require('oracledb');
 require('dotenv').config();
 
 // Inicializa o Oracle Client no modo Thick
-// Ajuste o caminho abaixo para onde você instalou o Instant Client
-try {  
-  oracledb.initOracleClient({ libDir: 'C:\\app\\client\\product\\21.0.0\\client_1\\bin' });
+// Caminho configurado em ORACLE_CLIENT_LIB_DIR no .env
+const libDir = process.env.ORACLE_CLIENT_LIB_DIR;
+
+if (!libDir) {
+  console.error('Erro: ORACLE_CLIENT_LIB_DIR não definido no .env');
+  process.exit(1);
+}
+
+try {
+  oracledb.initOracleClient({ libDir });
 } catch (err) {
   console.error('Erro ao inicializar o Oracle Client:', err);
   process.exit(1);

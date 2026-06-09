@@ -20,8 +20,17 @@ async function getToken() {
     let clientSecret = configML[0].MLCN_CLIENT_SECRET; 
     let expires      = configML[0].EXPIRES;
     let uri          = configML[0].MLCN_REDIRECT_URI;
+    
+    console.log('code: ', code);
+    console.log('token: ', token);
+    console.log('accessToken: ', accessToken);
+    console.log('clientID: ', clientID);
+    console.log('clientSecret: ', clientSecret);
+    console.log('expires: ', expires);
+    console.log('uri: ', uri);
 
     if (expires == 'N'){
+      console.log('Token ainda válido');
       return configML;
     }
         
