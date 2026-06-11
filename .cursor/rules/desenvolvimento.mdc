@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Desenvolvimento — Horus × Mercado Livre
 
-Leia antes de alterar código: `.cursor/docs/CONTEXTO-IA.md`, `.cursor/docs/ARQUITETURA.md` e `.cursor/docs/OAUTH-TOKEN.md`.
+Leia antes de alterar código: `.cursor/docs/CONTEXTO-IA.md`, `.cursor/docs/ARQUITETURA.md`, `.cursor/docs/OAUTH-TOKEN.md` e `.cursor/docs/MercadoLivre-API.md`.
 
 ## Identidade do projeto
 

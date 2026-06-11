@@ -1,5 +1,5 @@
-const axios = require('axios');
-const getToken = require('../token/getToken');
+const mlApi = require('../../utils/mlApi');
+const { getTokenConfig } = require('../token/getToken');
 
 function findInAdditional(additionalInfo = [], type) {
   const t = (type || '').toUpperCase();
@@ -11,11 +11,11 @@ async function getDadosFaturamento(ordemID) {
   if (!ordemID) return {};
 
   try {
-    const resToken = await getToken.getToken();
-    const access_token = resToken[0].MLCN_ACCESS_TOKEN;
+    const tokenConfig = await getTokenConfig();
+    const access_token = tokenConfig.MLCN_ACCESS_TOKEN;
 
     // Consulta ao endpoint billing_info
-    const res = await axios.get(`https://api.mercadolibre.com/orders/${ordemID}/billing_info`, {
+    const res = await mlApi.get('getDadosFaturamento', `https://api.mercadolibre.com/orders/${ordemID}/billing_info`, {
       headers: { Authorization: `Bearer ${access_token}` },
     });
 

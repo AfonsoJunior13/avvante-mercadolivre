@@ -1,14 +1,14 @@
-const axios = require('axios');
-const getToken = require('../token/getToken');
+const mlApi = require('../../utils/mlApi');
+const { getTokenConfig } = require('../token/getToken');
 
 async function getOrdensAll() {
 
-  const resToken = await getToken.getToken();    
-  const access_token = resToken[0].MLCN_ACCESS_TOKEN; 
-  const userID = resToken[0].MLCN_USER_ID;
-  
+  const tokenConfig = await getTokenConfig();
+  const access_token = tokenConfig.MLCN_ACCESS_TOKEN;
+  const userID = tokenConfig.MLCN_USER_ID;
+
   try {
-    const response = await axios.get('https://api.mercadolibre.com/orders/search?seller='+userID, {
+    const response = await mlApi.get('getOrdensAll', 'https://api.mercadolibre.com/orders/search?seller=' + userID, {
       headers: {
         Authorization: 'Bearer '+access_token
       }

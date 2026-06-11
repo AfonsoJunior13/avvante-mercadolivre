@@ -14,11 +14,13 @@ flowchart TB
 
     subgraph app [Aplicação Node.js]
         APP[app.js]
+        EXECLOG[execLogger.js]
         JOBS[execJobs.js]
         SVC[services]
+        MLAPI[mlApi.js]
         REPO[repositories]
         CFG[config/database.js]
-        UTIL[utils]
+        UTIL[utils/logger, jsonLogger, oracleErrorHandler]
     end
 
     subgraph banco [ERP Horus — Oracle]
@@ -27,9 +29,11 @@ flowchart TB
         TAB[Tabelas MERC_LIVRE_*]
     end
 
+    APP --> EXECLOG
     APP --> JOBS
     JOBS --> SVC
-    SVC -->|axios + Bearer token| ML
+    SVC --> MLAPI
+    MLAPI -->|axios + Bearer token| ML
     SVC --> REPO
     REPO --> CFG
     CFG -->|oracledb| PRC
@@ -55,7 +59,9 @@ flowchart TB
 
 - **Separação por domínio:** cada entidade (token, produto, ordem, categoria, tipo de anúncio) possui pasta própria em `services/` e `repositories/`.
 - **Persistência delegada ao Oracle:** o Node.js não faz `INSERT`/`UPDATE` direto; chama procedures `PRC_MLAPI_*`, onde ficam validações e regras do Horus.
-- **Token centralizado:** todos os serviços que consomem a API passam por `getToken.getToken()`, que lê credenciais do banco e renova o OAuth quando expirado.
+- **Token centralizado:** serviços que consomem a API usam `getTokenConfig()` (validação + access token); renovação OAuth em `getToken.getToken()`.
+- **Cliente HTTP único:** chamadas à API ML passam por `utils/mlApi.js`, que registra JSON enviado/recebido automaticamente.
+- **Resiliência por item:** falha em uma ordem ou produto é logada; o loop continua nos demais registros.
 - **Processamento sequencial:** produtos e pedidos são iterados um a um (sem fila ou paralelismo).
 
 ## Fluxo de inicialização
@@ -68,6 +74,7 @@ sequenceDiagram
     participant CRON as node-cron
 
     BAT->>APP: node src/app.js
+    APP->>EXECLOG: require execLogger (intercepta console)
     APP->>JOB: require('./jobs/execJobs')
     JOB->>JOB: Iniciar() — execução imediata
     Note over JOB: token → tpAnuncio → categoria → produto → ordem
@@ -82,36 +89,38 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     A[getToken.js] --> B[configRepository.configFind]
-    B --> C{Token expirado?}
-    C -->|Não| D[Retorna access_token]
-    C -->|Sim| E[findToken.js]
+    B --> C{EXPIRES = S?}
+    C -->|Não| D[getTokenConfig]
+    C -->|Sim| E[findToken.js — se MLCN_CODE]
     E --> F[refreshToken.js]
     F --> G[configRepository.configUpdate]
     G --> H[PRC_MLAPI_TOKEN_UPDATE]
     H --> D
+    D --> I[MLCN_ACCESS_TOKEN válido]
 ```
 
 | Componente | Arquivo | API / Banco |
 |------------|---------|-------------|
 | Orquestrador | `services/token/getToken.js` | View `VIEW_MERC_LIVRE_CONFIG` |
-| Primeiro token | `services/token/findToken.js` | `POST /oauth/token` (authorization_code) |
-| Renovação | `services/token/refreshToken.js` | `POST /oauth/token` (refresh_token) |
-| Leitura config | `repositories/configRepository.js` | `VIEW_MERC_LIVRE_CONFIG` |
-| Gravação token | `repositories/configRepository.js` | `PRC_MLAPI_TOKEN_UPDATE` |
+| Validação para API | `getTokenConfig()` em `getToken.js` | Garante `MLCN_ACCESS_TOKEN`; lança se indisponível |
+| Primeiro token | `services/token/findToken.js` | `POST /oauth/token` via `mlApi.request('findToken', ...)` |
+| Renovação | `services/token/refreshToken.js` | `POST /oauth/token` via `mlApi.request('refreshToken', ...)` |
+| Leitura config | `repositories/configRepository.js` | `VIEW_MERC_LIVRE_CONFIG` + log JSON rec |
+| Gravação token | `repositories/configRepository.js` | `PRC_MLAPI_TOKEN_UPDATE` + log JSON env/rec |
 
 Credenciais (`client_id`, `client_secret`, `code`, `redirect_uri`) ficam em `MERC_LIVRE_CONFIG`. A view calcula o campo `EXPIRES` comparando `MLCN_TOKEN_DT_VAL` com `SYSDATE`.
 
 ### 2. Tipos de anúncio
 
 ```
-getTpAnuncios.js  →  GET /sites/MLB/listing_types
+getTpAnuncios.js  →  mlApi.get('getTpAnuncios', ...)  →  GET /sites/MLB/listing_types
 tpAnuncios.js     →  tpAnuncioRepository  →  PRC_MLAPI_TP_ANUNCIO_UPDATE  →  MERC_LIVRE_TP_ANUNCIO
 ```
 
 ### 3. Categorias
 
 ```
-getCategorias.js  →  GET /sites/MLB/categories
+getCategorias.js  →  mlApi.get('getCategorias', ...)  →  GET /sites/MLB/categories
 categorias.js     →  categoriaRepository  →  PRC_MLAPI_CATEGORIA_UPDATE  →  MERC_LIVRE_CATEGORIA
 ```
 
@@ -127,9 +136,10 @@ flowchart TD
     F --> G[produtoRepository.produtoUpdate]
     G --> H[PRC_MLAPI_PRODUTO_UPDATE]
     H --> I[MERC_LIVRE_PRODUTO]
+    G -.->|erro| J[logger.logError + próximo produto]
 ```
 
-Campos extraídos dos atributos ML: `SELLER_SKU` e `GTIN`.
+Campos extraídos dos atributos ML: `SELLER_SKU` e `GTIN`. Erro em um produto não interrompe o lote.
 
 ### 5. Pedidos
 
@@ -148,9 +158,10 @@ flowchart TD
     I --> L[PRC_MLAPI_ORDEM_UPDATE]
     J --> M[PRC_MLAPI_ORDEM_END_UPDATE]
     K --> N[PRC_MLAPI_ORDEM_ITEM_UPDATE]
+    I -.->|erro por ordem| O[logger.logError + próxima ordem]
 ```
 
-Somente pedidos com `status = paid` e pagamento `approved` entram na sincronização.
+Somente pedidos com `status = paid` e pagamento `approved` entram na sincronização. Cada ordem (API ML + gravação Oracle) está em `try/catch` isolado.
 
 ## Camada de persistência (Oracle)
 
@@ -213,17 +224,49 @@ flowchart LR
 |--------|------------------|-----|
 | `.env` | `DB_USER`, `DB_PASSWORD`, `DB_CONNECT` | Conexão Oracle |
 | `.env` | `UNIDADE_EMPRESARIAL_ID` | Identifica a loja/unidade no Horus |
+| `.env` | `ORACLE_CLIENT_LIB_DIR` | Caminho do Oracle Instant Client (modo Thick) |
 | Banco | `MLCN_CLIENT_ID`, `MLCN_CLIENT_SECRET`, etc. | OAuth Mercado Livre |
-| Código | `libDir` em `database.js` | Caminho do Oracle Instant Client |
 
 ## Tratamento de erros e logs
 
-| Mecanismo | Arquivo | Comportamento |
-|-----------|---------|---------------|
-| Logger | `utils/logger.js` | Append em `src/error.log` |
-| Handler Oracle | `utils/oracleErrorHandler.js` | Extrai mensagem de `ORA-20000` |
-| Jobs | `execJobs.js` | `try/catch` por job; falha não interrompe os demais |
-| Pedidos | `ordens.js` | Erro por ordem é logado; loop continua |
+```mermaid
+flowchart TB
+    subgraph console [Console]
+        LOG[console.log / warn / info]
+        ERR[console.error]
+    end
+
+    subgraph files [Arquivos logs/]
+        EXEC[logs/exec/yyyymmdd.log]
+        ERROR[logs/error/yyyymmdd.logError]
+        ENV[logs/json/env/yyyymmddhhmmss_rotina.json]
+        REC[logs/json/rec/yyyymmddhhmmss_rotina.json]
+    end
+
+    APP[app.js] --> EXECLOG[execLogger.js]
+    LOG --> EXECLOG
+    ERR --> EXECLOG
+    EXECLOG --> EXEC
+    EXECLOG --> ERROR
+    LOGGER[logger.logError] --> ERROR
+
+    MLAPI[mlApi.js] --> ENV
+    MLAPI --> REC
+    REPO[repositories] --> ENV
+    REPO --> REC
+```
+
+| Mecanismo | Arquivo | Destino | Comportamento |
+|-----------|---------|---------|---------------|
+| Exec logger | `utils/execLogger.js` | `logs/exec/` | Espelha todo output do console; linha com `HH:mm:ss` |
+| Error logger | `utils/logger.js` | `logs/error/` | Erros tratados + `console.error`; arquivo `yyyymmdd.logError` |
+| JSON logger | `utils/jsonLogger.js` | `logs/json/env/` e `rec/` | Payload enviado/recebido; tokens mascarados |
+| Cliente ML | `utils/mlApi.js` | via jsonLogger | Wrapper axios; rotina no nome do arquivo |
+| Handler Oracle | `utils/oracleErrorHandler.js` | — | Extrai mensagem de `ORA-20000` |
+| Jobs | `execJobs.js` | `logs/error/` | `try/catch` por job; falha não interrompe os demais |
+| Pedidos | `ordens.js` | `logs/error/` | `try/catch` por ordem; loop continua |
+| Produtos | `produtos.js` | `logs/error/` | `try/catch` por produto; loop continua |
+| Billing / shipping | `getDadosFaturamento.js`, `getEndereco.js` | `logs/json/rec/` | Falha API → retorna `{}` |
 
 ## Dependências externas
 
@@ -241,44 +284,44 @@ flowchart LR
 
 | Pacote npm | Papel |
 |------------|-------|
-| `axios` | Cliente HTTP para API ML |
+| `axios` | HTTP interno em `mlApi.js` |
 | `oracledb` | Driver Oracle (modo Thick) |
 | `node-cron` | Agendamento |
 | `dotenv` | Variáveis de ambiente |
 | `qs` | Body `x-www-form-urlencoded` no OAuth |
-| `winston` | Declarado; logging efetivo via `logger.js` |
+| `winston` | Declarado; logging efetivo via `logger.js`, `execLogger.js`, `jsonLogger.js` |
 
 ## Mapa de arquivos por responsabilidade
 
 ```
 src/
-├── app.js                          # Entry point
+├── app.js                          # Entry point (execLogger → dotenv → execJobs)
 ├── config/
-│   └── database.js                 # Pool/conexão Oracle + initOracleClient
+│   └── database.js                 # initOracleClient + getConnection
 ├── jobs/
 │   └── execJobs.js                 # Cron + Iniciar()
 ├── services/
 │   ├── token/
-│   │   ├── getToken.js             # Fluxo completo OAuth
-│   │   ├── findToken.js            # authorization_code
-│   │   └── refreshToken.js         # refresh_token
+│   │   ├── getToken.js             # OAuth + getTokenConfig()
+│   │   ├── findToken.js            # authorization_code (mlApi)
+│   │   └── refreshToken.js         # refresh_token (mlApi)
 │   ├── tpAnuncio/
 │   │   ├── tpAnuncios.js           # Orquestrador
-│   │   └── getTpAnuncios.js        # API client
+│   │   └── getTpAnuncios.js        # mlApi client
 │   ├── categoria/
 │   │   ├── categorias.js
 │   │   └── getCategorias.js
 │   ├── produto/
-│   │   ├── produtos.js             # Loop + transformação
+│   │   ├── produtos.js             # Loop + try/catch por produto
 │   │   ├── getProdutosAll.js
 │   │   └── getProduto.js
 │   └── ordem/
-│       ├── ordens.js               # Orquestrador de pedidos
+│       ├── ordens.js               # Orquestrador + try/catch por ordem
 │       ├── getOrdensAll.js
 │       ├── getOrdem.js
 │       ├── getDadosFaturamento.js
 │       └── getEndereco.js
-├── repositories/
+├── repositories/                   # Procedures + logJsonEnv/logJsonRec
 │   ├── configRepository.js
 │   ├── produtoRepository.js
 │   ├── ordemRepository.js
@@ -287,12 +330,22 @@ src/
 │   ├── categoriaRepository.js
 │   └── tpAnuncioRepository.js
 ├── utils/
-│   ├── logger.js
+│   ├── execLogger.js               # Console → logs/exec + logs/error
+│   ├── logger.js                   # logError → logs/error
+│   ├── jsonLogger.js               # logs/json/env e rec
+│   ├── mlApi.js                    # Cliente HTTP ML + log JSON
 │   └── oracleErrorHandler.js
 └── oracle/                         # DDL — não executado pelo Node
     ├── *.tab                       # Tabelas
     ├── *.vw                        # Views
     └── prc_mlapi_*.prc             # Procedures
+
+logs/                               # Não versionado (.gitignore)
+├── exec/                           # yyyymmdd.log
+├── error/                          # yyyymmdd.logError
+└── json/
+    ├── env/                        # JSON enviado/gerado
+    └── rec/                        # JSON recebido
 ```
 
 ## Ambiente de desenvolvimento
@@ -306,6 +359,10 @@ O `docker-compose.yml` provê um **Oracle XE 21** local (`gvenzl/oracle-xe:21.3.
 - **Sem API REST exposta:** o serviço não oferece endpoints HTTP; é exclusivamente worker/cron.
 - **Conexão por operação:** cada chamada de repository abre e fecha conexão Oracle (`getConnection` / `close`).
 - **Site fixo MLB:** categorias e tipos de anúncio usam `sites/MLB` (Brasil).
+- **Logs locais:** toda execução gera arquivos em `logs/` (exec, error, json); não versionados.
+- **Repasse ao vendedor:** não implementado (ver `MercadoLivre-API.md` seção 9).
+
+Última atualização: junho/2026.
 
 ## Referência
 

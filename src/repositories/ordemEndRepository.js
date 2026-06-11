@@ -1,12 +1,27 @@
 const { getConnection } = require('../config/database');
 const { tratarErroOracle } = require('../utils/oracleErrorHandler');
+const { logJsonEnv, logJsonRec } = require('../utils/jsonLogger');
 
 
 async function ordemEndUpdate(data) {
   
   const connection = await getConnection();  
   
-  try {    
+  try {
+        const binds = {
+                        P_MLOE_ORDER_ID: data.ordem_id,
+                        P_MLOE_ENDERECO: data.endereco,
+                        P_MLOE_NUMERO: data.numero,
+                        P_MLOE_COMPLEMENTO: data.complemento,
+                        P_MLOE_BAIRRO: data.bairro,
+                        P_MLOE_CIDADE: data.cidade,
+                        P_MLOE_UF: data.uf,
+                        P_MLOE_CEP: data.cep,
+                        P_TRANSACTION: 0
+                    };
+
+        logJsonEnv('ordemEndUpdate', binds);
+
         await connection.execute(
             `BEGIN PRC_MLAPI_ORDEM_END_UPDATE(:P_MLOE_ORDER_ID    ,
                                               :P_MLOE_ENDERECO    ,
@@ -17,18 +32,10 @@ async function ordemEndUpdate(data) {
                                               :P_MLOE_UF          ,
                                               :P_MLOE_CEP         ,
                                               :P_TRANSACTION      ); END;`,
-                    {
-                        P_MLOE_ORDER_ID: data.ordem_id,
-                        P_MLOE_ENDERECO: data.endereco,
-                        P_MLOE_NUMERO: data.numero,
-                        P_MLOE_COMPLEMENTO: data.complemento,
-                        P_MLOE_BAIRRO: data.bairro,
-                        P_MLOE_CIDADE: data.cidade,
-                        P_MLOE_UF: data.uf,
-                        P_MLOE_CEP: data.cep, 
-                        P_TRANSACTION: 0
-                    }
-        );        
+                    binds
+        );
+
+        logJsonRec('ordemEndUpdate', { success: true, ordem_id: data.ordem_id });
     return {success: true};
 
   } catch (err) {        

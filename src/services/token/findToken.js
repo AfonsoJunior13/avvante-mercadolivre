@@ -1,4 +1,4 @@
-const axios = require('axios');
+const mlApi = require('../../utils/mlApi');
 const qs = require('qs');
 
 async function findToken(clientID, clientSecret, code, redirectURI) {
@@ -23,7 +23,7 @@ async function findToken(clientID, clientSecret, code, redirectURI) {
       data: data
     };
 
-    const response = await axios.request(config);
+    const response = await mlApi.request('findToken', config);
     return response.data;
   
 }

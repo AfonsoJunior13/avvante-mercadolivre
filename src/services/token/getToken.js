@@ -5,59 +5,72 @@ const refreshToken = require('./refreshToken');
 require('dotenv').config();
 
 async function getToken() {
-  try {        
-    // Busca informações no Banco de Dados...
-    //console.log('<< Find Token BD >>');
-    
-    let unidade_empresarial_id = process.env.UNIDADE_EMPRESARIAL_ID;
+  try {
+    const unidade_empresarial_id = process.env.UNIDADE_EMPRESARIAL_ID;
 
-    let configML = await configRepository.configFind(unidade_empresarial_id);    
+    let configML = await configRepository.configFind(unidade_empresarial_id);
 
-    let code         = configML[0].MLCN_CODE;
-    let token        = configML[0].MLCN_TOKEN;
-    let accessToken  = configML[0].MLCN_ACCESS_TOKEN;
-    let clientID     = configML[0].MLCN_CLIENT_ID;
-    let clientSecret = configML[0].MLCN_CLIENT_SECRET; 
-    let expires      = configML[0].EXPIRES;
-    let uri          = configML[0].MLCN_REDIRECT_URI;
-    
-    console.log('code: ', code);
-    console.log('token: ', token);
-    console.log('accessToken: ', accessToken);
-    console.log('clientID: ', clientID);
-    console.log('clientSecret: ', clientSecret);
-    console.log('expires: ', expires);
-    console.log('uri: ', uri);
+    if (!configML?.[0]) {
+      throw new Error('Configuração Mercado Livre não encontrada no Oracle.');
+    }
 
-    if (expires == 'N'){
-      console.log('Token ainda válido');
+    let code = configML[0].MLCN_CODE;
+    let token = configML[0].MLCN_TOKEN;
+    const clientID = configML[0].MLCN_CLIENT_ID;
+    const clientSecret = configML[0].MLCN_CLIENT_SECRET;
+    const expires = configML[0].EXPIRES;
+    const uri = configML[0].MLCN_REDIRECT_URI;
+
+    if (expires == 'N') {
       return configML;
     }
-        
-    // Primeira busca de Token...
-    try{      
-      const resFind = await findToken.findToken(clientID, clientSecret, code, uri);
-      if (resFind.status != '400'){
-        console.log('> Primeiro Token');
-        token = resFind.refresh_token;  
+
+    if (code) {
+      try {
+        const resFind = await findToken.findToken(clientID, clientSecret, code, uri);
+        if (resFind?.refresh_token) {
+          console.log('> Primeiro Token');
+          token = resFind.refresh_token;
+        }
+      } catch (err) {
+        console.error('Erro ao obter token inicial (authorization_code):', err?.response?.data || err.message);
       }
     }
-    catch{}
-    
-    // Refresh Token...
+
     console.log('> Refresh Token');
-    const resToken = await refreshToken.refreshToken(clientID, clientSecret, token);    
-    
-    // Grava o Token no Banco de Dados...
-    console.log('> Update Token');    
-    await configRepository.configUpdate(unidade_empresarial_id, resToken.refresh_token, resToken.access_token, resToken.user_id, resToken.expires_in);
+    const resToken = await refreshToken.refreshToken(clientID, clientSecret, token);
 
-    configML = await configRepository.configFind(unidade_empresarial_id);    
-    return configML; 
+    console.log('> Update Token');
+    await configRepository.configUpdate(
+      unidade_empresarial_id,
+      resToken.refresh_token,
+      resToken.access_token,
+      resToken.user_id,
+      resToken.expires_in
+    );
 
+    configML = await configRepository.configFind(unidade_empresarial_id);
+    return configML;
   } catch (error) {
     console.error('Erro Carregar Token >> ', error);
+    throw error;
   }
 }
 
-module.exports = {getToken};
+async function getTokenConfig() {
+  const configML = await getToken();
+
+  if (!configML?.[0]) {
+    throw new Error('Token OAuth indisponível: nenhuma configuração retornada do Oracle.');
+  }
+
+  const row = configML[0];
+
+  if (!row.MLCN_ACCESS_TOKEN) {
+    throw new Error('Token OAuth indisponível: MLCN_ACCESS_TOKEN ausente.');
+  }
+
+  return row;
+}
+
+module.exports = { getToken, getTokenConfig };

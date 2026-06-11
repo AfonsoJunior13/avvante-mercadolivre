@@ -18,7 +18,7 @@ Serviço **Node.js worker** (sem API HTTP) que sincroniza periodicamente dados d
 | Repositório | `avvante-mercado-livre` |
 | Cliente/ERP | Horus (schema Oracle `HORUS`) |
 | Marketplace | Mercado Livre Brasil (`sites/MLB`) |
-| Entry point | `src/app.js` → `src/jobs/execJobs.js` |
+| Entry point | `src/app.js` (execLogger → dotenv → jobs) → `src/jobs/execJobs.js` |
 | Linguagem | JavaScript CommonJS (`require` / `module.exports`) |
 | Idioma do usuário | **Português** (sempre responder em PT-BR) |
 
@@ -46,6 +46,8 @@ Serviço **Node.js worker** (sem API HTTP) que sincroniza periodicamente dados d
 |---------|-------------|
 | `README.md` | Instalação, `.env`, jobs, endpoints ML |
 | `ARQUITETURA.md` | Diagramas, camadas, fluxos por módulo |
+| `OAUTH-TOKEN.md` | OAuth passo a passo e troubleshooting |
+| `MercadoLivre-API.md` | **Índice da API ML** — endpoints, permissões, notificações, boas práticas |
 | `CONTEXTO-IA.md` | **Este arquivo** — convenções, armadilhas, onde mexer |
 | `src/oracle/*.tab`, `*.prc`, `*.vw` | DDL e regras de negócio no banco |
 
@@ -62,12 +64,12 @@ Mercado Livre OAuth 2.0
 
 | Pacote | Uso real no código |
 |--------|---------------------|
-| `axios` | Todas as chamadas à API ML |
+| `axios` | HTTP interno em `utils/mlApi.js` (não usar direto nos services) |
 | `oracledb` | Conexão e execução de procedures |
 | `node-cron` | Agendamento em `execJobs.js` |
-| `dotenv` | `.env` (DB + unidade empresarial) |
+| `dotenv` | `.env` (DB + unidade empresarial + Oracle Client) |
 | `qs` | Body OAuth (`application/x-www-form-urlencoded`) |
-| `winston` | Declarado no `package.json`; **logging efetivo** via `src/utils/logger.js` |
+| `winston` | Declarado no `package.json`; **logging efetivo** via `utils/logger.js`, `execLogger.js` e `jsonLogger.js` |
 
 ---
 
@@ -80,6 +82,7 @@ DB_USER=
 DB_PASSWORD=
 DB_CONNECT=host:1521/servico
 UNIDADE_EMPRESARIAL_ID=
+ORACLE_CLIENT_LIB_DIR=C:\caminho\para\oracle\instant\client
 ```
 
 **OAuth fica no banco**, tabela `MERC_LIVRE_CONFIG`:
@@ -94,12 +97,33 @@ View de leitura: `VIEW_MERC_LIVRE_CONFIG` (campo `EXPIRES`: `S` = precisa renova
 Em `src/config/database.js`:
 
 ```javascript
-oracledb.initOracleClient({ libDir: 'C:\\app\\client\\product\\21.0.0\\client_1\\bin' });
+oracledb.initOracleClient({ libDir: process.env.ORACLE_CLIENT_LIB_DIR });
 ```
 
-- Caminho **hardcoded** para Windows.
-- Se falhar na inicialização, o processo encerra com `process.exit(1)`.
-- Ao portar para Linux/Docker/outra máquina, **ajustar `libDir`** ou usar variável de ambiente.
+- Caminho via **`ORACLE_CLIENT_LIB_DIR`** no `.env` (obrigatório).
+- Se ausente ou inválido, o processo encerra com `process.exit(1)`.
+- Ajustar o caminho por ambiente (Windows/Linux/Docker).
+
+---
+
+## Sistema de logs
+
+Carregado na subida via `src/app.js` → `require('./utils/execLogger')` **antes** dos demais módulos.
+
+| Tipo | Utilitário | Pasta | Nome do arquivo | Formato da linha/conteúdo |
+|------|------------|-------|-----------------|---------------------------|
+| Execução (console) | `utils/execLogger.js` | `logs/exec/` | `yyyymmdd.log` | `HH:mm:ss mensagem` |
+| Erros | `utils/logger.js` + hook em `execLogger` | `logs/error/` | `yyyymmdd.logError` | `HH:mm:ss mensagem` |
+| JSON enviado | `utils/jsonLogger.js` | `logs/json/env/` | `yyyymmddhhmmss_rotina.json` | payload mascarado (tokens/secrets) |
+| JSON recebido | `utils/jsonLogger.js` | `logs/json/rec/` | `yyyymmddhhmmss_rotina.json` | resposta da API ou retorno Oracle |
+
+- **`console.log` / `warn` / `info`** → espelhados em `logs/exec/`.
+- **`console.error`** → espelhado em `logs/exec/` **e** `logs/error/`.
+- **`logger.logError()`** → `logs/error/` (erros tratados em jobs, ordens, produtos).
+- **Chamadas API ML** → via `utils/mlApi.js` (`get`, `request`); grava env/rec automaticamente.
+- **Repositories** → gravam binds (env) e confirmação/leitura (rec) via `jsonLogger`.
+
+A pasta `logs/` está no `.gitignore`. Colisão de arquivos no mesmo segundo recebe sufixo `_1`, `_2`, etc.
 
 ---
 
@@ -111,11 +135,17 @@ Cada entidade segue o mesmo desenho:
 
 ```
 services/{dominio}/
-  getXxx.js          → chama API ML (axios + Bearer token via getToken)
+  getXxx.js          → chama API ML via mlApi + Bearer token via getTokenConfig
   xxxs.js            → orquestra: busca API → transforma → chama repository
 
 repositories/
-  xxxRepository.js → connection.execute('BEGIN PRC_MLAPI_... END;')
+  xxxRepository.js → connection.execute('BEGIN PRC_MLAPI_... END;') + log JSON env/rec
+
+src/utils/
+  mlApi.js           → wrapper axios com log JSON automático
+  jsonLogger.js      → gravação logs/json/env e logs/json/rec
+  execLogger.js      → intercepta console → logs/exec e logs/error
+  logger.js          → logError → logs/error
 
 src/oracle/
   prc_mlapi_xxx_update.prc → insert/update + regras Horus
@@ -125,8 +155,12 @@ src/oracle/
 
 Todo `get*.js` que chama a API ML deve:
 
-1. `await getToken.getToken()`
-2. Usar `resToken[0].MLCN_ACCESS_TOKEN` e, se necessário, `MLCN_USER_ID`
+1. `const tokenConfig = await getTokenConfig()` (de `services/token/getToken.js`)
+2. Usar `tokenConfig.MLCN_ACCESS_TOKEN` e, se necessário, `tokenConfig.MLCN_USER_ID`
+
+`getToken()` orquestra renovação OAuth; **`getTokenConfig()`** valida config + access token e lança erro claro se indisponível. Em falha OAuth, `getToken()` **relança** o erro (não retorna `undefined`).
+
+Chamadas HTTP à API ML: usar **`mlApi.get(rotina, url, config)`** ou **`mlApi.request(rotina, config)`** — não axios direto.
 
 ### Repositories
 
@@ -172,8 +206,10 @@ Para novo job: criar função async + `cron.schedule` + exportar lógica no serv
 | Regra de transformação dos dados | `src/services/{dominio}/*.js` (orquestrador) |
 | Persistência / novo campo no banco | `src/repositories/*.js` + `src/oracle/prc_mlapi_*.prc` + `.tab` |
 | Credenciais OAuth / token | Banco `MERC_LIVRE_CONFIG` + `services/token/*` |
-| Conexão Oracle | `src/config/database.js` + `.env` |
-| Log de erros | `src/utils/logger.js` → `src/error.log` |
+| Conexão Oracle | `src/config/database.js` + `.env` (`ORACLE_CLIENT_LIB_DIR`) |
+| Log de execução (console) | `src/utils/execLogger.js` → `logs/exec/yyyymmdd.log` |
+| Log de erros | `src/utils/logger.js` → `logs/error/yyyymmdd.logError` |
+| Log JSON API/Oracle | `src/utils/jsonLogger.js` + `src/utils/mlApi.js` → `logs/json/env/` e `logs/json/rec/` |
 | Filtro de pedidos importados | `src/services/ordem/getOrdensAll.js` (hoje: `paid` + payment `approved`) |
 | Dados fiscais do comprador | `src/services/ordem/getDadosFaturamento.js` |
 | Endereço de entrega | `src/services/ordem/getEndereco.js` (API `/shipments/{id}`) |
@@ -241,13 +277,22 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 
 1. **`findToken.js`** — `code_verifier` está como literal `'$CODE_VERIFIER'` (placeholder); fluxo OAuth inicial pode precisar de ajuste para PKCE real.
 2. **`ordens.js`** — itens do pedido gravam `sku: '0'` e `gtin: '0'` fixos (não extrai do produto).
-3. **`configRepository.js`** — no `catch` de `configUpdate`, referência a `logError(errorMsg)` parece incorreta (variável indefinida).
-4. **`database.js`** — caminho Oracle Client fixo por máquina Windows.
-5. **`Iniciar.bat`** — path desatualizado em relação ao workspace atual.
-6. **Sem testes** — validar manualmente contra API ML e banco Horus.
-7. **Conexão por operação** — cada repository abre/fecha conexão; não há pool compartilhado.
-8. **Pedidos** — erro em uma ordem é logado e o loop continua; demais jobs abortam no primeiro throw do orquestrador.
-9. **Arquivos locais não versionados** — `.env`, `src/error.log`, `node_modules/`, `logs/`.
+3. **`Iniciar.bat`** — path desatualizado em relação ao workspace atual.
+4. **Sem testes** — validar manualmente contra API ML e banco Horus.
+5. **Conexão por operação** — cada repository abre/fecha conexão; não há pool compartilhado.
+6. **OAuth `MLCN_CODE`** — após primeira troca, o code expira; tentativa de `findToken` gera `invalid_grant` (ruído no log) se o code antigo permanecer no banco; o refresh costuma resolver.
+7. **Arquivos locais não versionados** — `.env`, `logs/`, `node_modules/`.
+
+### Tratamento de erros (comportamento atual)
+
+| Camada | Comportamento |
+|--------|---------------|
+| `execJobs.js` | `try/catch` por job; falha de um job não interrompe os demais na mesma execução |
+| `ordens.js` | `try/catch` por ordem (API + Oracle); log + continua próxima ordem |
+| `produtos.js` | `try/catch` por produto; log + continua próximo item |
+| `getDadosFaturamento.js` | Falha API → retorna `{}` e continua |
+| `getEndereco.js` | Falha API → retorna `{}` e continua |
+| `getToken.js` | Falha OAuth → relança erro; `getTokenConfig()` valida antes do uso |
 
 ---
 
@@ -256,9 +301,10 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 1. Criar/alterar tabela em `src/oracle/*.tab`
 2. Criar procedure `PRC_MLAPI_{ENTIDADE}_UPDATE` em `src/oracle/`
 3. Criar `repositories/{entidade}Repository.js` seguindo padrão existente
-4. Criar `services/{entidade}/get{Entidade}.js` (API) e `{entidade}s.js` (orquestrador)
+4. Criar `services/{entidade}/get{Entidade}.js` (API via `mlApi`) e `{entidade}s.js` (orquestrador)
 5. Registrar job em `execJobs.js` (função + cron + chamada em `Iniciar()`)
-6. Atualizar `README.md`, `ARQUITETURA.md` e este `CONTEXTO-IA.md`
+6. Adicionar logs JSON no repository (`logJsonEnv` / `logJsonRec`) se persistir dados
+7. Atualizar `README.md`, `ARQUITETURA.md` e este `CONTEXTO-IA.md`
 
 ---
 
@@ -276,7 +322,7 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 
 **Não commitar:**
 - `.env`
-- `src/error.log`
+- `logs/` (exec, error, json)
 - Credenciais Oracle/ML
 
 **Arquivos auxiliares no repo:**
@@ -298,17 +344,22 @@ Commits e PRs: só quando o usuário pedir explicitamente.
 - Integração `MERC_LIVRE_PRDT` / imagens (`DESENV`)
 - Pool de conexões Oracle
 - Testes de integração mockados
-- Parametrizar `libDir` e site MLB via `.env`
+- Parametrizar site MLB via `.env` (hoje fixo em código)
 - Corrigir SKU/GTIN nos itens de pedido
+- Limpar `MLCN_CODE` após troca OAuth bem-sucedida (evitar ruído `invalid_grant`)
+- Integração repasse ao vendedor (Relatórios de Faturamento / Provisões — ver `MercadoLivre-API.md` seção 9)
 
 ---
 
 ## Histórico de contexto da sessão
 
-Documentação criada para o projeto Avvante/Horus:
+Documentação criada/atualizada para o projeto Avvante/Horus:
 - `README.md` — guia geral
 - `ARQUITETURA.md` — diagramas e camadas
 - `CONTEXTO-IA.md` — este guia de continuidade
+- `OAUTH-TOKEN.md`, `MercadoLivre-API.md` — referência API ML
+
+Alterações recentes (jun/2026): logs estruturados (`logs/exec`, `logs/error`, `logs/json`), `mlApi`/`getTokenConfig`, tratamento de erros por ordem/produto, `ORACLE_CLIENT_LIB_DIR` no `.env`.
 
 Última atualização deste arquivo: junho/2026.
 

@@ -1,13 +1,13 @@
-const axios = require('axios');
-const getToken = require('../token/getToken');
+const mlApi = require('../../utils/mlApi');
+const { getTokenConfig } = require('../token/getToken');
 
 async function getTpAnuncios() {
 
-  const resToken = await getToken.getToken();    
-  const access_token = resToken[0].MLCN_ACCESS_TOKEN;    
-  
+  const tokenConfig = await getTokenConfig();
+  const access_token = tokenConfig.MLCN_ACCESS_TOKEN;
+
   try {
-    const response = await axios.get('https://api.mercadolibre.com/sites/MLB/listing_types', {
+    const response = await mlApi.get('getTpAnuncios', 'https://api.mercadolibre.com/sites/MLB/listing_types', {
       headers: {
         Authorization: 'Bearer '+access_token
       }

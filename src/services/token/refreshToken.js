@@ -1,4 +1,4 @@
-const axios = require('axios');
+const mlApi = require('../../utils/mlApi');
 const qs = require('qs');
 
 async function refreshToken(clientID, clientSecret, refreshToken) {
@@ -21,7 +21,7 @@ async function refreshToken(clientID, clientSecret, refreshToken) {
         data : data
     };
     
-    const response = await axios.request(config);
+    const response = await mlApi.request('refreshToken', config);
     return response.data;
   
 }
