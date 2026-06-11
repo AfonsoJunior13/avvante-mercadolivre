@@ -5,6 +5,7 @@ const tpAnuncios = require('../services/tpAnuncio/tpAnuncios');
 const categorias = require('../services/categoria/categorias');
 const produtos = require('../services/produto/produtos');
 const ordens = require('../services/ordem/ordens');
+const ordemPagto = require('../services/ordem/ordemPagto');
 
 require('dotenv').config();
 
@@ -58,6 +59,16 @@ async function ordensSave() {
   }  
 }
 
+async function ordemPagtoSave() {
+  console.log('*** Ordens Pagto ***');
+  try {
+    await ordemPagto.ordemPagtoAtualizar();
+  } catch (error) {
+    console.error('Erro Pagto ML: ', error);
+    await logger.logError(error);
+  }
+}
+
 async function Iniciar() {
   console.log(`<< INICIO ${new Date().toLocaleString()} >>`);
   await refreshToken();
@@ -65,6 +76,7 @@ async function Iniciar() {
   await categoriasSave();
   await produtosSave();
   await ordensSave();
+  await ordemPagtoSave();
   console.log(`<< FIM ${new Date().toLocaleString()} >>`);
 }
 

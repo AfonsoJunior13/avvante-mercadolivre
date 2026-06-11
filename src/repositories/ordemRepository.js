@@ -1,8 +1,39 @@
+const oracledb = require('oracledb');
 const { getConnection } = require('../config/database');
 const { tratarErroOracle } = require('../utils/oracleErrorHandler');
 const { logJsonEnv, logJsonRec } = require('../utils/jsonLogger');
 
 require('dotenv').config();
+
+async function getOrdensPagtoAberto() {
+  const connection = await getConnection();
+  const unidadeEmpresarialID = process.env.UNIDADE_EMPRESARIAL_ID;
+
+  try {
+    logJsonEnv('getOrdensPagtoAberto', { UNIDADE_EMPRESARIAL_ID: unidadeEmpresarialID });
+
+    const result = await connection.execute(
+      `select M.MLOR_ORDER_ID
+         from MERC_LIVRE_ORDEM M
+        where M.UNIDADE_EMPRESARIAL_ID             = :UNIDADE_EMPRESARIAL_ID
+          and M.STATUS                             = 'Ativo'
+          and nvl(M.MLOR_PAGTO_ML_STATUS,'Aberto') = 'Aberto'`,
+      { UNIDADE_EMPRESARIAL_ID: unidadeEmpresarialID },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    const ids = (result.rows || []).map((row) => row.MLOR_ORDER_ID);
+    logJsonRec('getOrdensPagtoAberto', { total: ids.length, ordens: ids });
+    return ids;
+  } catch (err) {
+    if (err.errorNum === 20000) {
+      throw new Error(tratarErroOracle(err.message));
+    }
+    throw new Error('Erro inesperado: ' + err.message);
+  } finally {
+    await connection.close();
+  }
+}
 
 async function ordemUpdate(data) {
   
@@ -71,6 +102,7 @@ async function ordemUpdate(data) {
   }
 }
 
-module.exports = {  
-  ordemUpdate
+module.exports = {
+  ordemUpdate,
+  getOrdensPagtoAberto,
 };
