@@ -1,0 +1,47 @@
+create table DESENV.MERC_LIVRE_PRDT_IMAGEM
+(
+  merc_livre_prdt_imagem_id VARCHAR2(20) not null,
+  merc_livre_prdt_id        VARCHAR2(20),
+  usuario_inclusao          VARCHAR2(20),
+  origem_alteracao          VARCHAR2(12),
+  data_alteracao            DATE,
+  usuario_alteracao         VARCHAR2(20),
+  origem_exclusao           VARCHAR2(12),
+  data_exclusao             DATE,
+  usuario_exclusao          VARCHAR2(20),
+  origem_recuperacao        VARCHAR2(12),
+  data_recuperacao          DATE,
+  usuario_recuperacao       VARCHAR2(20),
+  status                    VARCHAR2(15),
+  mlpm_url                  VARCHAR2(2000),
+  mlpm_ordem                NUMBER(8)
+)
+tablespace HORUSDATA
+  pctfree 10
+  initrans 1
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table DESENV.MERC_LIVRE_PRDT_IMAGEM
+  add constraint PK_MERC_LIVRE_PRDT_IMAGEM_ID primary key (MERC_LIVRE_PRDT_IMAGEM_ID)
+  using index
+  tablespace HORUSDATA
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table DESENV.MERC_LIVRE_PRDT_IMAGEM
+  add constraint FK_MLPM_MERC_LIVRE_PRDT_ID foreign key (MERC_LIVRE_PRDT_ID)
+  references DESENV.MERC_LIVRE_PRDT (MERC_LIVRE_PRDT_ID);
+

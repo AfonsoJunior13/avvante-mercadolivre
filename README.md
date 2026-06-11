@@ -43,7 +43,8 @@ src/
 │   ├── tpAnuncio/            # Tipos de anúncio
 │   ├── categoria/            # Categorias MLB
 │   ├── produto/              # Produtos/anúncios
-│   └── ordem/                # Pedidos, endereço e faturamento
+│   ├── ordem/                # Pedidos, endereço e faturamento
+│   └── pergunta/             # Perguntas nos anúncios
 ├── repositories/             # Acesso ao banco via procedures Oracle
 ├── utils/
 │   ├── logger.js             # Log de erros em error.log
@@ -98,6 +99,7 @@ Ao iniciar, o serviço executa **todos os jobs imediatamente** e depois mantém 
 | Categorias | A cada 12 horas | Atualiza `MERC_LIVRE_CATEGORIA` |
 | Produtos | A cada 5 minutos | Sincroniza anúncios do vendedor |
 | Pedidos | A cada 5 minutos | Importa pedidos pagos e aprovados |
+| Perguntas | A cada 5 minutos | Sincroniza perguntas recebidas nos anúncios |
 
 ## Objetos Oracle
 
@@ -112,6 +114,7 @@ Scripts DDL e procedures ficam em `src/oracle/`:
 | `MERC_LIVRE_ORDEM_END` | Endereço de entrega |
 | `MERC_LIVRE_CATEGORIA` | Categorias MLB |
 | `MERC_LIVRE_TP_ANUNCIO` | Tipos de listagem |
+| `MERC_LIVRE_PERGUNTA` | Perguntas recebidas nos anúncios |
 | `PRC_MLAPI_*` | Procedures de insert/update chamadas pelos repositories |
 
 ## Endpoints da API utilizados
@@ -124,6 +127,8 @@ Scripts DDL e procedures ficam em `src/oracle/`:
 - `GET /orders/{id}/billing_info` — dados de faturamento (CPF/CNPJ, endereço)
 - `GET /sites/MLB/categories` — categorias
 - `GET /sites/MLB/listing_types` — tipos de anúncio
+- `GET /my/received_questions/search?api_version=4` — perguntas recebidas pelo vendedor
+- `GET /questions/{id}?api_version=4` — detalhe da pergunta (inclui dados do comprador)
 
 ## Docker (Oracle local para desenvolvimento)
 

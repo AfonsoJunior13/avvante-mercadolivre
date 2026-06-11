@@ -1,0 +1,71 @@
+create table DESENV.MERC_LIVRE_PRDT
+(
+  merc_livre_prdt_id     VARCHAR2(20) not null,
+  embalagem_venda_id     VARCHAR2(20) not null,
+  mlpr_acao              VARCHAR2(50),
+  mlpr_preco             NUMBER(10,2),
+  mlpr_qtde              NUMBER(10),
+  mlpr_tp_anuncio        VARCHAR2(50),
+  usuario_inclusao       VARCHAR2(20),
+  origem_alteracao       VARCHAR2(12),
+  data_alteracao         DATE,
+  usuario_alteracao      VARCHAR2(20),
+  origem_exclusao        VARCHAR2(12),
+  data_exclusao          DATE,
+  usuario_exclusao       VARCHAR2(20),
+  origem_recuperacao     VARCHAR2(12),
+  data_recuperacao       DATE,
+  usuario_recuperacao    VARCHAR2(20),
+  status                 VARCHAR2(15),
+  mlpr_data_envio        DATE,
+  mlpr_data_atualizacao  DATE,
+  mlpr_data_agendamento  DATE,
+  unidade_empresarial_id VARCHAR2(20) not null,
+  mlpr_id                VARCHAR2(500)
+)
+tablespace HORUSDATA
+  pctfree 10
+  initrans 1
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table DESENV.MERC_LIVRE_PRDT
+  add constraint PK_MERC_LIVRE_PRDT_ID primary key (MERC_LIVRE_PRDT_ID)
+  using index
+  tablespace HORUSDATA
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table DESENV.MERC_LIVRE_PRDT
+  add constraint UK_MERC_LIVRE_PRDT unique (EMBALAGEM_VENDA_ID, UNIDADE_EMPRESARIAL_ID)
+  using index
+  tablespace HORUSDATA
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table DESENV.MERC_LIVRE_PRDT
+  add constraint FK_MLPR_EMBALAGEM_VENDA_ID foreign key (EMBALAGEM_VENDA_ID)
+  references DESENV.EMBALAGEM_VENDA (EMBALAGEM_VENDA_ID);
+alter table DESENV.MERC_LIVRE_PRDT
+  add constraint FK_MLPR_UNIDADE_EMPRESARIAL_ID foreign key (UNIDADE_EMPRESARIAL_ID)
+  references DESENV.UNIDADE_EMPRESARIAL (UNIDADE_EMPRESARIAL_ID);
+

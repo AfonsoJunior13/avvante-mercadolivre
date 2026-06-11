@@ -27,7 +27,7 @@ Serviço **Node.js worker** (sem API HTTP) que sincroniza periodicamente dados d
 ## O que este projeto **é** e **não é**
 
 **É:**
-- Integração batch pull (polling) ML → Horus
+- Integração batch pull (polling) ML → Horus (produtos, pedidos, categorias, tipos de anúncio, **perguntas**)
 - Processo de longa duração com `node-cron`
 - Ponte entre axios (API REST) e oracledb (procedures PL/SQL)
 
@@ -119,7 +119,7 @@ Carregado na subida via `src/app.js` → `require('./utils/execLogger')` **antes
 
 - **`console.log` / `warn` / `info`** → espelhados em `logs/exec/`.
 - **`console.error`** → espelhado em `logs/exec/` **e** `logs/error/`.
-- **`logger.logError()`** → `logs/error/` (erros tratados em jobs, ordens, produtos).
+- **`logger.logError()`** → `logs/error/` (erros tratados em jobs, ordens, produtos, perguntas).
 - **Chamadas API ML** → via `utils/mlApi.js` (`get`, `request`); grava env/rec automaticamente.
 - **Repositories** → gravam binds (env) e confirmação/leitura (rec) via `jsonLogger`.
 
@@ -173,8 +173,8 @@ Chamadas HTTP à API ML: usar **`mlApi.get(rotina, url, config)`** ou **`mlApi.r
 
 - CommonJS, sem TypeScript
 - Funções `async/await`
-- Nomes em português nos domínios de negócio (`ordens`, `produtos`, `categorias`)
-- Campos API ML em inglês; campos mapeados para Oracle com prefixos `MLOR_`, `MLPD_`, `MLCN_`, etc.
+- Nomes em português nos domínios de negócio (`ordens`, `produtos`, `categorias`, `perguntas`)
+- Campos API ML em inglês; campos mapeados para Oracle com prefixos `MLOR_`, `MLPD_`, `MLCN_`, `MLQT_`, etc.
 - Evitar refatorações amplas não solicitadas; manter diff mínimo
 
 ---
@@ -190,8 +190,10 @@ Arquivo: `src/jobs/execJobs.js`
 | `categoriasSave` | `0 */12 * * *` | `services/categoria/categorias.js` |
 | `produtosSave` | `*/5 * * * *` | `services/produto/produtos.js` |
 | `ordensSave` | `*/5 * * * *` | `services/ordem/ordens.js` |
+| `ordemPagtoSave` | (sem cron ativo) | `services/ordem/ordemPagto.js` |
+| `perguntasSave` | `*/5 * * * *` | `services/pergunta/perguntas.js` |
 
-Na subida: `Iniciar()` roda **todos** os jobs em sequência antes de registrar os crons.
+Na subida: `Iniciar()` roda **todos** os jobs em sequência (`token → tpAnuncio → categoria → produto → ordem → ordemPagto → pergunta`) antes de registrar os crons.
 
 Para novo job: criar função async + `cron.schedule` + exportar lógica no service correspondente.
 
@@ -214,6 +216,49 @@ Para novo job: criar função async + `cron.schedule` + exportar lógica no serv
 | Dados fiscais do comprador | `src/services/ordem/getDadosFaturamento.js` |
 | Endereço de entrega | `src/services/ordem/getEndereco.js` (API `/shipments/{id}`) |
 | SKU/GTIN de produtos | `src/services/produto/produtos.js` (`SELLER_SKU`, `GTIN` nos attributes) |
+| Sync perguntas ML | `src/services/pergunta/perguntas.js` — requer permissão DevCenter *Comunicação pré e pós-venda* |
+| Listagem paginada de perguntas | `src/services/pergunta/getPerguntasAll.js` |
+| Detalhe da pergunta + comprador | `src/services/pergunta/getPergunta.js` |
+| DDL/pergunta no Oracle | `src/oracle/merc_livre_pergunta.tab` + `prc_mlapi_pergunta_update.prc` |
+
+---
+
+## Domínio: Perguntas ao vendedor (jun/2026)
+
+Sincronização **pré-venda** — perguntas públicas feitas nos anúncios. **Não** confundir com mensagens pós-venda (`/messages/*`), que ainda não estão implementadas.
+
+### Pré-requisitos
+
+1. **DevCenter:** permissão funcional *Comunicação pré e pós-venda* (libera `questions`, `messages`, `claims`, `returns`). Sem ela → HTTP 403 `PA_UNAUTHORIZED_RESULT_FROM_POLICIES`.
+2. **OAuth:** vendedor deve reautorizar o app após habilitar a permissão.
+3. **Oracle:** executar scripts antes do primeiro job:
+   ```sql
+   @src/oracle/merc_livre_pergunta.tab
+   @src/oracle/prc_mlapi_pergunta_update.prc
+   ```
+   Ajustar schema `DESENV` se o ambiente usar outro.
+
+### Endpoints ML consumidos
+
+| Arquivo | Endpoint |
+|---------|----------|
+| `getPerguntasAll.js` | `GET /my/received_questions/search?api_version=4` (paginação `limit`/`offset`) |
+| `getPergunta.js` | `GET /questions/{id}?api_version=4` (e-mail, telefone e nome do comprador) |
+
+Sempre usar `api_version=4`. Status ML: `UNANSWERED`, `ANSWERED`, `BANNED`, `CLOSED_UNANSWERED`, `DELETED`, `DISABLED`, `UNDER_REVIEW`.
+
+### Fluxo (`perguntas.js`)
+
+1. `getPerguntasAll()` — lista todas as perguntas recebidas (paginado, 50 por página).
+2. Para cada pergunta → `getPergunta(id)` — detalhe com dados do comprador.
+3. `extrairDadosComprador(from)` — mapeia `first_name`/`last_name`/`nickname`, `email`, `phone`.
+4. `perguntaRepository.perguntaUpdate()` → `PRC_MLAPI_PERGUNTA_UPDATE`.
+
+Erro em uma pergunta não interrompe o lote (`try/catch` + `logger.logError`).
+
+### Notificações (webhooks) vs polling
+
+O Horus **não expõe HTTP** — webhooks do ML (tópicos `questions` / `messages`) **não estão implementados**. Perguntas usam **polling** periódico, alinhado aos demais domínios. Detalhes em `MercadoLivre-API.md` seções 5 e 10.
 
 ---
 
@@ -228,6 +273,30 @@ Para novo job: criar função async + `cron.schedule` + exportar lógica no serv
 - `MERC_LIVRE_ORDEM_END` — endereço entrega
 - `MERC_LIVRE_CATEGORIA` — categorias MLB
 - `MERC_LIVRE_TP_ANUNCIO` — tipos de listagem
+- `MERC_LIVRE_PERGUNTA` — perguntas recebidas nos anúncios (prefixo colunas `MLQT_`)
+
+### Tabela `MERC_LIVRE_PERGUNTA` — campos principais
+
+| Coluna Oracle | Origem API ML |
+|---------------|---------------|
+| `MLQT_QUESTION_ID` | `id` (UK) |
+| `MLQT_ITEM_ID` | `item_id` |
+| `MLQT_SELLER_ID` | `seller_id` |
+| `MLQT_STATUS` | `status` |
+| `MLQT_TEXT` | `text` |
+| `MLQT_DATE_CREATED` | `date_created` |
+| `MLQT_FROM_USER_ID` | `from.id` |
+| `MLQT_ANSWER_TEXT` | `answer.text` |
+| `MLQT_ANSWER_STATUS` | `answer.status` |
+| `MLQT_ANSWER_DATE` | `answer.date_created` |
+| `MLQT_BUYER_NOME` | `from.first_name` / `last_name` / `nickname` |
+| `MLQT_BUYER_EMAIL` | `from.email` |
+| `MLQT_BUYER_PHONE` | `from.phone` |
+| `MLQT_HOLD` | `hold` (`S`/`N`) |
+| `MLQT_DELETED_LISTING` | `deleted_from_listing` (`S`/`N`) |
+| `UNIDADE_EMPRESARIAL_ID` | `.env` → `UNIDADE_EMPRESARIAL_ID` |
+
+Scripts: `src/oracle/merc_livre_pergunta.tab`, `src/oracle/prc_mlapi_pergunta_update.prc`.
 
 ### Procedures chamadas pelo Node
 
@@ -238,6 +307,7 @@ Para novo job: criar função async + `cron.schedule` + exportar lógica no serv
 | `PRC_MLAPI_ORDEM_UPDATE` | `ordemRepository.js` |
 | `PRC_MLAPI_ORDEM_ITEM_UPDATE` | `ordemItemRepository.js` |
 | `PRC_MLAPI_ORDEM_END_UPDATE` | `ordemEndRepository.js` |
+| `PRC_MLAPI_PERGUNTA_UPDATE` | `perguntaRepository.js` |
 | `PRC_MLAPI_CATEGORIA_UPDATE` | `categoriaRepository.js` |
 | `PRC_MLAPI_TP_ANUNCIO_UPDATE` | `tpAnuncioRepository.js` |
 
@@ -256,7 +326,13 @@ Scripts adicionais em `src/oracle/` referem schema `DESENV` (`MERC_LIVRE_PRDT`, 
 - OAuth: `POST https://api.mercadolibre.com/oauth/token`
 - Site fixo: **MLB** (Brasil) em categorias e listing_types
 
-Documentação oficial: https://developers.mercadolivre.com.br/
+Endpoints adicionais (perguntas):
+
+- `GET /my/received_questions/search?api_version=4` — listagem paginada
+- `GET /questions/{id}?api_version=4` — detalhe + dados do comprador
+
+Documentação oficial: https://developers.mercadolivre.com.br/  
+Perguntas: https://developers.mercadolivre.com.br/pt_br/variacoes/perguntas-e-respostas
 
 ---
 
@@ -290,6 +366,7 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 | `execJobs.js` | `try/catch` por job; falha de um job não interrompe os demais na mesma execução |
 | `ordens.js` | `try/catch` por ordem (API + Oracle); log + continua próxima ordem |
 | `produtos.js` | `try/catch` por produto; log + continua próximo item |
+| `perguntas.js` | `try/catch` por pergunta; log + continua próxima pergunta |
 | `getDadosFaturamento.js` | Falha API → retorna `{}` e continua |
 | `getEndereco.js` | Falha API → retorna `{}` e continua |
 | `getToken.js` | Falha OAuth → relança erro; `getTokenConfig()` valida antes do uso |
@@ -338,7 +415,7 @@ Commits e PRs: só quando o usuário pedir explicitamente.
 
 Áreas comuns de continuidade que **ainda não existem** no código:
 
-- Webhooks/notifications ML (substituir ou complementar polling)
+- Webhooks/notifications ML — **perguntas via polling**; mensagens pós-venda ainda não implementadas (ver `MercadoLivre-API.md` seções 5 e 10)
 - Exportação Horus → ML (publicar/atualizar anúncios)
 - Suporte a múltiplas unidades empresariais
 - Integração `MERC_LIVRE_PRDT` / imagens (`DESENV`)
@@ -359,7 +436,35 @@ Documentação criada/atualizada para o projeto Avvante/Horus:
 - `CONTEXTO-IA.md` — este guia de continuidade
 - `OAUTH-TOKEN.md`, `MercadoLivre-API.md` — referência API ML
 
-Alterações recentes (jun/2026): logs estruturados (`logs/exec`, `logs/error`, `logs/json`), `mlApi`/`getTokenConfig`, tratamento de erros por ordem/produto, `ORACLE_CLIENT_LIB_DIR` no `.env`.
+### Alterações jun/2026 — infraestrutura
+
+- Logs estruturados (`logs/exec`, `logs/error`, `logs/json`)
+- `mlApi` / `getTokenConfig` — cliente HTTP centralizado
+- Tratamento de erros por ordem/produto (`try/catch` isolado)
+- `ORACLE_CLIENT_LIB_DIR` no `.env`
+
+### Alterações jun/2026 — sync de perguntas ao vendedor
+
+**Código Node:**
+
+| Arquivo | Função |
+|---------|--------|
+| `src/services/pergunta/getPerguntasAll.js` | Listagem paginada via API ML |
+| `src/services/pergunta/getPergunta.js` | Detalhe com `api_version=4` |
+| `src/services/pergunta/perguntas.js` | Orquestrador batch |
+| `src/repositories/perguntaRepository.js` | Chama `PRC_MLAPI_PERGUNTA_UPDATE` |
+| `src/jobs/execJobs.js` | Job `perguntasSave` + cron comentado (`*/5 * * * *`) |
+
+**Oracle (aplicar manualmente no banco):**
+
+| Script | Objeto |
+|--------|--------|
+| `src/oracle/merc_livre_pergunta.tab` | Tabela `MERC_LIVRE_PERGUNTA` |
+| `src/oracle/prc_mlapi_pergunta_update.prc` | Procedure insert/update |
+
+**Documentação atualizada:** `MercadoLivre-API.md` (seções 2, 4, 5, 8, 10), `ARQUITETURA.md`, `README.md`.
+
+**Fora de escopo desta entrega:** mensagens pós-venda (`/messages/*`), webhooks HTTP, view `VIEW_MERC_LIVRE_PERGUNTA`.
 
 Última atualização deste arquivo: junho/2026.
 

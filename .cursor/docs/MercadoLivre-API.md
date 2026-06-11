@@ -110,7 +110,19 @@ Permissões necessárias para o projeto Horus:
 | **Usuários** (default) | users | OAuth, `user_id` |
 | **Publicação e sincronização** | items, categories, listing_types, prices | Produtos, categorias, tipos de anúncio |
 | **Vendas e envios** | orders, shipments, billing | Pedidos, endereço, faturamento |
+| **Comunicação pré e pós-venda** | questions, messages, claims, returns | Perguntas nos anúncios — **obrigatória para sync de perguntas** |
 | **Faturamento** | invoices, billing, conciliação | Repasse ao vendedor — **não implementado** |
+
+### Checklist DevCenter — perguntas e mensagens
+
+Passos manuais no [DevCenter](https://developers.mercadolivre.com.br/devcenter) (Meus aplicativos → editar app):
+
+1. **Permissões funcionais:** habilitar **Comunicação pré e pós-venda** (leitura e escrita).
+2. **Reautorizar OAuth:** após alterar permissões, o vendedor deve refazer o fluxo de autorização para conceder o novo grant.
+3. **Tópicos de notificação (opcional):** marcar `questions` e `messages` se no futuro houver callback HTTP — hoje o Horus usa **polling** (ver seção 5).
+4. **Escopos:** manter `offline_access`, `read` e `write`.
+
+Sem a permissão de comunicação, chamadas a `/my/received_questions/search` retornam HTTP 403.
 
 ### Erro sem permissão
 
@@ -243,6 +255,8 @@ Causas: token expirado, já usado, revogado, `redirect_uri` divergente, troca de
 | Envio/endereço | GET | `/shipments/{id}` | `getEndereco.js` |
 | Categorias MLB | GET | `/sites/MLB/categories` | `getCategorias.js` |
 | Tipos de anúncio | GET | `/sites/MLB/listing_types` | `getTpAnuncios.js` |
+| Listar perguntas recebidas | GET | `/my/received_questions/search?api_version=4` | `getPerguntasAll.js` |
+| Detalhe pergunta | GET | `/questions/{id}?api_version=4` | `getPergunta.js` |
 
 ### Exemplo — buscar pedidos (doc oficial)
 
@@ -265,6 +279,17 @@ curl -X GET -H 'Authorization: Bearer $ACCESS_TOKEN' \
 
 Alternativa ao **polling** (`node-cron`) usado hoje no projeto.
 
+### Decisão no Horus: polling (jun/2026)
+
+O worker **não expõe HTTP** — não há endpoint para receber callbacks do ML. A sincronização de **perguntas** usa polling periódico (`getPerguntasAll` → `getPergunta` → `PRC_MLAPI_PERGUNTA_UPDATE`), alinhado aos demais domínios (produtos, pedidos).
+
+Webhooks seriam úteis para latência menor, mas exigiriam:
+- Servidor HTTP público (Express/Fastify ou proxy reverso)
+- Resposta 200 em ≤ 500 ms + fila assíncrona
+- Infraestrutura adicional de deploy e firewall (IPs ML na seção abaixo)
+
+**Mensagens pós-venda** (`messages`) permanecem **não implementadas** — apenas documentadas para evolução futura.
+
 ### Configuração
 
 - Definir **Callback URL** no DevCenter (URL pública, HTTP POST)
@@ -273,11 +298,13 @@ Alternativa ao **polling** (`node-cron`) usado hoje no projeto.
 
 ### Tópicos relevantes para o Horus
 
-| Tópico | Evento | GET após notificação |
-|--------|--------|----------------------|
-| `orders_v2` | Criação/alteração de vendas | `/orders/{id}` |
-| `items` | Mudanças em anúncios | `/items/{id}` |
-| `shipments` | Criação/alteração de envios | `/shipments/{id}` |
+| Tópico | Evento | GET após notificação | Horus hoje |
+|--------|--------|----------------------|------------|
+| `orders_v2` | Criação/alteração de vendas | `/orders/{id}` | Polling |
+| `items` | Mudanças em anúncios | `/items/{id}` | Polling |
+| `shipments` | Criação/alteração de envios | `/shipments/{id}` | Não implementado |
+| `questions` | Pergunta feita ou respondida | `/questions/{id}?api_version=4` | **Polling** (`perguntas.js`) |
+| `messages` | Mensagem pós-venda criada/lida | `/messages/{id}` | Não implementado |
 
 ### Payload de notificação
 
@@ -351,8 +378,10 @@ Credenciais OAuth ficam em `MERC_LIVRE_CONFIG` (Oracle), não no `.env`.
 | Sync produtos | Job 5 min → `produtos.js` |
 | Sync pedidos | Job 5 min → `ordens.js` |
 | Sync categorias/tipos | Job 12 h |
+| Sync perguntas | Job 5 min → `perguntas.js` |
 | Renovação token | Job 30 min → `getToken.js` |
-| Notificações | **Não implementado** (polling) |
+| Notificações | **Não implementado** — perguntas via **polling** |
+| Mensagens pós-venda | **Não implementado** |
 | Pagamentos ao vendedor | **Não implementado** (ver seção 9) |
 | Exportação ML ← Horus | **Não implementado** |
 
@@ -551,7 +580,27 @@ flowchart TD
 
 ---
 
-## 10. Consultar documentação via MCP
+## 10. Perguntas ao vendedor (implementado)
+
+**Doc:** [Perguntas e Respostas](https://developers.mercadolivre.com.br/pt_br/variacoes/perguntas-e-respostas)
+
+Fluxo batch (polling), igual aos demais domínios:
+
+1. `GET /my/received_questions/search?api_version=4` — listagem paginada (`getPerguntasAll.js`)
+2. `GET /questions/{id}?api_version=4` — detalhe com dados do comprador (`getPergunta.js`)
+3. `PRC_MLAPI_PERGUNTA_UPDATE` — persistência em `MERC_LIVRE_PERGUNTA`
+
+Job: `perguntasSave` em `execJobs.js` (cron sugerido: 5 minutos).
+
+**Pré-requisito DevCenter:** permissão *Comunicação pré e pós-venda* (seção 2).
+
+**Status ML:** `UNANSWERED`, `ANSWERED`, `BANNED`, `CLOSED_UNANSWERED`, `DELETED`, `DISABLED`, `UNDER_REVIEW`.
+
+**Mensagens pós-venda** (`/messages/*`, tópico webhook `messages`) — documentadas na seção 5, **não implementadas**.
+
+---
+
+## 11. Consultar documentação via MCP
 
 Para buscar novamente com o agente de IA:
 

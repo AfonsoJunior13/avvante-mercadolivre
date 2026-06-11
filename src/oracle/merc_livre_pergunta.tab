@@ -1,0 +1,71 @@
+create table DESENV.MERC_LIVRE_PERGUNTA
+(
+  merc_livre_pergunta_id VARCHAR2(20) not null,
+  unidade_empresarial_id VARCHAR2(20),
+  mlqt_question_id       NUMBER(20),
+  mlqt_item_id           VARCHAR2(100),
+  mlqt_seller_id         NUMBER(20),
+  mlqt_status            VARCHAR2(50),
+  mlqt_text              VARCHAR2(4000),
+  mlqt_date_created      DATE,
+  mlqt_from_user_id      NUMBER(20),
+  mlqt_hold              VARCHAR2(1),
+  mlqt_deleted_listing   VARCHAR2(1),
+  mlqt_answer_text       VARCHAR2(4000),
+  mlqt_answer_status     VARCHAR2(50),
+  mlqt_answer_date       DATE,
+  mlqt_buyer_nome        VARCHAR2(200),
+  mlqt_buyer_email       VARCHAR2(200),
+  mlqt_buyer_phone       VARCHAR2(50),
+  usuario_inclusao       VARCHAR2(20),
+  origem_alteracao       VARCHAR2(12),
+  data_alteracao         DATE,
+  usuario_alteracao      VARCHAR2(20),
+  origem_exclusao        VARCHAR2(12),
+  data_exclusao          DATE,
+  usuario_exclusao       VARCHAR2(20),
+  origem_recuperacao     VARCHAR2(12),
+  data_recuperacao       DATE,
+  usuario_recuperacao    VARCHAR2(20),
+  status                 VARCHAR2(15),
+  data_inclusao          DATE
+)
+tablespace HORUSDATA
+  pctfree 10
+  initrans 1
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table DESENV.MERC_LIVRE_PERGUNTA
+  add constraint PK_MERC_LIVRE_PERGUNTA_ID primary key (MERC_LIVRE_PERGUNTA_ID)
+  using index
+  tablespace USERS
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+alter table DESENV.MERC_LIVRE_PERGUNTA
+  add constraint UK_MLQT_QUESTION_ID unique (MLQT_QUESTION_ID)
+  using index
+  tablespace USERS
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );

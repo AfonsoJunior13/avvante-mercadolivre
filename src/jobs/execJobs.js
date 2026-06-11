@@ -6,6 +6,7 @@ const categorias = require('../services/categoria/categorias');
 const produtos = require('../services/produto/produtos');
 const ordens = require('../services/ordem/ordens');
 const ordemPagto = require('../services/ordem/ordemPagto');
+const perguntas = require('../services/pergunta/perguntas');
 
 require('dotenv').config();
 
@@ -69,6 +70,16 @@ async function ordemPagtoSave() {
   }
 }
 
+async function perguntasSave() {
+  console.log('*** Perguntas ***');
+  try {
+    await perguntas.perguntasAtualizar();
+  } catch (error) {
+    console.error('Erro Pergunta: ', error);
+    await logger.logError(error);
+  }
+}
+
 async function Iniciar() {
   console.log(`<< INICIO ${new Date().toLocaleString()} >>`);
   await refreshToken();
@@ -77,6 +88,7 @@ async function Iniciar() {
   await produtosSave();
   await ordensSave();
   await ordemPagtoSave();
+  await perguntasSave();
   console.log(`<< FIM ${new Date().toLocaleString()} >>`);
 }
 
@@ -88,3 +100,4 @@ Iniciar();
 //cron.schedule('0 */12 * * *', categoriasSave); // 12 horas
 //cron.schedule('*/5 * * * *', produtosSave); // 5 minutos
 //cron.schedule('*/5 * * * *', ordensSave); // 5 minutos
+//cron.schedule('*/5 * * * *', perguntasSave); // 5 minutos
