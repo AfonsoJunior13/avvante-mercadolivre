@@ -22,11 +22,11 @@ async function ordemPagtoUpdate(data) {
 
     await connection.execute(
       `BEGIN PRC_MLAPI_ML_PAGTO( :P_UNIDADE_EMPRESARIAL_ID ,
-                                :P_MLOR_ORDER_ID          ,
-                                :P_MLOR_PAGTO_ML_DATA     ,
-                                :P_MLOR_PAGTO_ML_STATUS   ,
-                                :P_MLOR_PAGTO_ML_VLR      ,
-                                :P_TRANSACTION            ); END;`,
+                                 :P_MLOR_ORDER_ID          ,
+                                 :P_MLOR_PAGTO_ML_DATA     ,
+                                 :P_MLOR_PAGTO_ML_STATUS   ,
+                                 :P_MLOR_PAGTO_ML_VLR      ,
+                                 :P_TRANSACTION            ); END;`,
       binds
     );
 
