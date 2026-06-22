@@ -27,7 +27,7 @@ Serviço **Node.js worker** (sem API HTTP) que sincroniza periodicamente dados d
 ## O que este projeto **é** e **não é**
 
 **É:**
-- Integração batch pull (polling) ML → Horus (produtos, pedidos, categorias, tipos de anúncio, **perguntas**)
+- Integração batch pull (polling) ML → Horus (produtos, pedidos, categorias, tipos de anúncio, **perguntas**, **pagamento/repasse ML**)
 - Processo de longa duração com `node-cron`
 - Ponte entre axios (API REST) e oracledb (procedures PL/SQL)
 
@@ -168,6 +168,7 @@ Chamadas HTTP à API ML: usar **`mlApi.get(rotina, url, config)`** ou **`mlApi.r
 - Erros Oracle `errorNum === 20000` → `tratarErroOracle()` em `utils/oracleErrorHandler.js`
 - Parâmetro `P_TRANSACTION: 0` em todas as procedures (commit controlado no PL/SQL)
 - Procedures usam `GENERATE_NEXT_ID` para PKs novas (padrão Horus)
+- **Gravação** sempre via procedure; **leitura** pode usar SELECT direto (ex.: `configFind`, `getOrdensPagtoAberto`)
 
 ### Estilo
 
@@ -183,19 +184,40 @@ Chamadas HTTP à API ML: usar **`mlApi.get(rotina, url, config)`** ou **`mlApi.r
 
 Arquivo: `src/jobs/execJobs.js`
 
-| Função | Cron | Service |
-|--------|------|---------|
-| `refreshToken` | `*/30 * * * *` | `services/token/getToken.js` |
-| `tpAnuncioSave` | `0 */12 * * *` | `services/tpAnuncio/tpAnuncios.js` |
-| `categoriasSave` | `0 */12 * * *` | `services/categoria/categorias.js` |
-| `produtosSave` | `*/5 * * * *` | `services/produto/produtos.js` |
-| `ordensSave` | `*/5 * * * *` | `services/ordem/ordens.js` |
-| `ordemPagtoSave` | (sem cron ativo) | `services/ordem/ordemPagto.js` |
-| `perguntasSave` | `*/5 * * * *` | `services/pergunta/perguntas.js` |
+| Função | Cron (planejado) | Cron ativo hoje | Service |
+|--------|------------------|-----------------|---------|
+| `refreshToken` | `*/30 * * * *` | **comentado** | `services/token/getToken.js` |
+| `tpAnuncioSave` | `0 */12 * * *` | **comentado** | `services/tpAnuncio/tpAnuncios.js` |
+| `categoriasSave` | `0 */12 * * *` | **comentado** | `services/categoria/categorias.js` |
+| `produtosSave` | `*/5 * * * *` | **comentado** | `services/produto/produtos.js` |
+| `ordensSave` | `*/5 * * * *` | **comentado** | `services/ordem/ordens.js` |
+| `ordemPagtoSave` | (não definido) | **sem cron** | `services/ordem/ordemPagto.js` |
+| `perguntasSave` | `*/5 * * * *` | **comentado** | `services/pergunta/perguntas.js` |
 
-Na subida: `Iniciar()` roda **todos** os jobs em sequência (`token → tpAnuncio → categoria → produto → ordem → ordemPagto → pergunta`) antes de registrar os crons.
+**Estado atual:** na subida, `Iniciar()` executa **todos** os jobs **uma vez** em sequência (`token → tpAnuncio → categoria → produto → ordem → ordemPagto → pergunta`). Os `cron.schedule` estão **todos comentados** — o processo fica ocioso após a primeira rodada até ser reiniciado ou até alguém descomentar os crons.
 
-Para novo job: criar função async + `cron.schedule` + exportar lógica no service correspondente.
+Para novo job: criar função async + `cron.schedule` + exportar lógica no service correspondente + incluir chamada em `Iniciar()`.
+
+### Inventário atual (`src/`)
+
+```
+services/
+  token/       getToken.js, findToken.js, refreshToken.js
+  tpAnuncio/   tpAnuncios.js, getTpAnuncios.js
+  categoria/   categorias.js, getCategorias.js
+  produto/     produtos.js, getProdutosAll.js, getProduto.js
+  ordem/       ordens.js, ordemPagto.js, getOrdensAll.js, getOrdem.js,
+               getDadosFaturamento.js, getEndereco.js, getOrdemPagto.js
+  pergunta/    perguntas.js, getPerguntasAll.js, getPergunta.js
+
+repositories/
+  configRepository.js, produtoRepository.js, ordemRepository.js,
+  ordemItemRepository.js, ordemEndRepository.js, ordemPagtoRepository.js,
+  perguntaRepository.js, categoriaRepository.js, tpAnuncioRepository.js
+
+utils/
+  mlApi.js, jsonLogger.js, execLogger.js, logger.js, oracleErrorHandler.js
+```
 
 ---
 
@@ -220,6 +242,11 @@ Para novo job: criar função async + `cron.schedule` + exportar lógica no serv
 | Listagem paginada de perguntas | `src/services/pergunta/getPerguntasAll.js` |
 | Detalhe da pergunta + comprador | `src/services/pergunta/getPergunta.js` |
 | DDL/pergunta no Oracle | `src/oracle/merc_livre_pergunta.tab` + `prc_mlapi_pergunta_update.prc` |
+| Sync pagamento/repasse ML | `src/services/ordem/ordemPagto.js` — ordens com repasse em aberto |
+| API de repasse por pedido | `src/services/ordem/getOrdemPagto.js` (`GET /billing/integration/group/ML/order/details`) |
+| Ordens elegíveis para repasse | `src/repositories/ordemRepository.js` → `getOrdensPagtoAberto()` (SELECT direto) |
+| Persistência repasse ML | `src/repositories/ordemPagtoRepository.js` → `PRC_MLAPI_ML_PAGTO` |
+| DDL/procedure repasse | `src/oracle/merc_livre_ordem.tab` (colunas `MLOR_PAGTO_ML_*`) + `prc_mlapi_ml_pagto.prc` |
 
 ---
 
@@ -262,13 +289,62 @@ O Horus **não expõe HTTP** — webhooks do ML (tópicos `questions` / `message
 
 ---
 
+## Domínio: Pagamento / repasse ML (jun/2026)
+
+Sincronização do **repasse ao vendedor** (liberação de valores) para pedidos já importados no Horus. Complementa o módulo de pedidos — não substitui a importação de ordens em `ordens.js`.
+
+### Pré-requisitos
+
+1. Pedido já gravado em `MERC_LIVRE_ORDEM` via `ordensSave`.
+2. Colunas de repasse existentes na tabela (`MLOR_PAGTO_ML_DATA`, `MLOR_PAGTO_ML_STATUS`, `MLOR_PAGTO_ML_VLR`, `MLOR_PAGTO_ML_DT_PROC`) — ver `src/oracle/merc_livre_ordem.tab`.
+3. Procedure `PRC_MLAPI_ML_PAGTO` aplicada no banco (`src/oracle/prc_mlapi_ml_pagto.prc`).
+
+### Endpoints ML consumidos
+
+| Arquivo | Endpoint |
+|---------|----------|
+| `getOrdemPagto.js` | `GET /billing/integration/group/ML/order/details?order_ids={id}` |
+
+### Fluxo (`ordemPagto.js`)
+
+1. `getOrdensPagtoAberto()` — SELECT em `MERC_LIVRE_ORDEM` com `STATUS = 'Ativo'` e `MLOR_PAGTO_ML_STATUS` nulo ou `'Aberto'`.
+2. Para cada `MLOR_ORDER_ID` → `getOrdemPagto(id)` — consulta API de faturamento/repasse.
+3. `mapearPagtoMl()` — deriva `pagto_ml_data`, `pagto_ml_status` (`Quitado` / `Aberto`) e `pagto_ml_vlr`.
+4. `ordemPagtoRepository.ordemPagtoUpdate()` → `PRC_MLAPI_ML_PAGTO`.
+
+Erro em uma ordem não interrompe o lote (`try/catch` + `logger.logError`). Falha na API ML retorna objeto vazio (status `Aberto`, valor `0`) e o loop continua.
+
+### Cálculo do valor repassado (`getOrdemPagto.js`)
+
+Quando `payment_info[0].money_release_status === 'released'`:
+
+- Base: maior `transaction_amount` em `details[].sales_info`.
+- Desconta cobranças com `charge_info.debited_from_operation === 'YES'`.
+- Desconta retenções em `tax_details` (`original_amount - refunded_amount`).
+- Resultado arredondado em 2 casas, mínimo `0`.
+
+### Campos Oracle (`MERC_LIVRE_ORDEM`)
+
+| Coluna Oracle | Origem |
+|---------------|--------|
+| `MLOR_PAGTO_ML_DATA` | `payment_info[0].money_release_date` (quando quitado) |
+| `MLOR_PAGTO_ML_STATUS` | `Quitado` ou `Aberto` |
+| `MLOR_PAGTO_ML_VLR` | Valor líquido calculado |
+| `MLOR_PAGTO_ML_DT_PROC` | `SYSDATE` na procedure |
+
+### Leitura direta no Oracle (exceção)
+
+`getOrdensPagtoAberto()` em `ordemRepository.js` faz **SELECT direto** (não usa procedure). Padrão aceito para **consultas**; gravação continua via `PRC_MLAPI_ML_PAGTO`.
+
+---
+
 ## Objetos Oracle — contrato Node ↔ Horus
 
 ### Tabelas principais (schema `HORUS`)
 
 - `MERC_LIVRE_CONFIG` — OAuth
 - `MERC_LIVRE_PRODUTO` — anúncios
-- `MERC_LIVRE_ORDEM` — cabeçalho pedido
+- `MERC_LIVRE_ORDEM` — cabeçalho pedido (inclui colunas de repasse `MLOR_PAGTO_ML_*`)
 - `MERC_LIVRE_ORDEM_ITEM` — itens
 - `MERC_LIVRE_ORDEM_END` — endereço entrega
 - `MERC_LIVRE_CATEGORIA` — categorias MLB
@@ -307,13 +383,31 @@ Scripts: `src/oracle/merc_livre_pergunta.tab`, `src/oracle/prc_mlapi_pergunta_up
 | `PRC_MLAPI_ORDEM_UPDATE` | `ordemRepository.js` |
 | `PRC_MLAPI_ORDEM_ITEM_UPDATE` | `ordemItemRepository.js` |
 | `PRC_MLAPI_ORDEM_END_UPDATE` | `ordemEndRepository.js` |
+| `PRC_MLAPI_ML_PAGTO` | `ordemPagtoRepository.js` |
 | `PRC_MLAPI_PERGUNTA_UPDATE` | `perguntaRepository.js` |
 | `PRC_MLAPI_CATEGORIA_UPDATE` | `categoriaRepository.js` |
 | `PRC_MLAPI_TP_ANUNCIO_UPDATE` | `tpAnuncioRepository.js` |
 
-Existe também `PRC_MLAPI_PRODUTO_UPDATE_X` (variante; verificar uso antes de alterar).
+### Consultas diretas no Node (somente leitura)
 
-Scripts adicionais em `src/oracle/` referem schema `DESENV` (`MERC_LIVRE_PRDT`, `MERC_LIVRE_PRDT_IMAGEM`) — possível evolução futura, **não integrados** ao fluxo Node atual.
+| Função | Arquivo | Objeto |
+|--------|---------|--------|
+| `configFind` | `configRepository.js` | `VIEW_MERC_LIVRE_CONFIG` |
+| `getOrdensPagtoAberto` | `ordemRepository.js` | `MERC_LIVRE_ORDEM` |
+
+### Procedures Oracle **não** integradas ao Node
+
+Scripts em `src/oracle/` sem chamada nos repositories atuais:
+
+| Script | Observação |
+|--------|------------|
+| `prc_mlapi_config.prc` | Configuração — não usado pelo worker |
+| `prc_mlapi_produto.prc` | Variante legada de produto |
+| `prc_mlapi_cliente.prc`, `prc_mlapi_cliente_insert.prc` | Cliente Horus |
+| `prc_mlapi_endereco_insert.prc` | Endereço |
+| `prc_mlapi_pdsd_insert.prc`, `prc_mlapi_pdsd_exec.prc` | Pedido de saída (PDSD) |
+
+Scripts adicionais referem schema `DESENV` (`MERC_LIVRE_PRDT`, `MERC_LIVRE_PRDT_IMAGEM`) — possível evolução futura, **não integrados** ao fluxo Node atual.
 
 **Regra:** regras de negócio pesadas (gerar ID, validar duplicidade, commit) ficam nas **procedures**, não no Node.
 
@@ -331,6 +425,10 @@ Endpoints adicionais (perguntas):
 - `GET /my/received_questions/search?api_version=4` — listagem paginada
 - `GET /questions/{id}?api_version=4` — detalhe + dados do comprador
 
+Endpoints adicionais (repasse ML):
+
+- `GET /billing/integration/group/ML/order/details?order_ids={id}` — detalhes de liberação de valores
+
 Documentação oficial: https://developers.mercadolivre.com.br/  
 Perguntas: https://developers.mercadolivre.com.br/pt_br/variacoes/perguntas-e-respostas
 
@@ -340,10 +438,9 @@ Perguntas: https://developers.mercadolivre.com.br/pt_br/variacoes/perguntas-e-re
 
 ```bash
 npm install
-node src/app.js
+npm start
+# ou: node src/app.js
 ```
-
-Windows: `Iniciar.bat` (atenção: script aponta para `C:\Fontes\avvante-mercado-livre` — pode divergir do path real `C:\Projetos\avvante-mercado-livre`).
 
 Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 
@@ -352,12 +449,15 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 ## Pontos de atenção / débitos técnicos conhecidos
 
 1. **`findToken.js`** — `code_verifier` está como literal `'$CODE_VERIFIER'` (placeholder); fluxo OAuth inicial pode precisar de ajuste para PKCE real.
-2. **`ordens.js`** — itens do pedido gravam `sku: '0'` e `gtin: '0'` fixos (não extrai do produto).
-3. **`Iniciar.bat`** — path desatualizado em relação ao workspace atual.
-4. **Sem testes** — validar manualmente contra API ML e banco Horus.
-5. **Conexão por operação** — cada repository abre/fecha conexão; não há pool compartilhado.
-6. **OAuth `MLCN_CODE`** — após primeira troca, o code expira; tentativa de `findToken` gera `invalid_grant` (ruído no log) se o code antigo permanecer no banco; o refresh costuma resolver.
-7. **Arquivos locais não versionados** — `.env`, `logs/`, `node_modules/`.
+2. **`ordens.js`** — itens do pedido gravam `sku: '0'` e `gtin: '0'` fixos (não extrai do produto; SKU/GTIN **são** extraídos em `produtos.js`).
+3. **Crons desabilitados** — todos os `cron.schedule` em `execJobs.js` estão comentados; sincronização periódica só ocorre se o processo for reiniciado ou os crons forem reativados.
+4. **`PRC_MLAPI_ML_PAGTO`** — lógica invertida no script `prc_mlapi_ml_pagto.prc`: quando a ordem **é** encontrada, dispara `ORA-20000` com mensagem "Ordem não encontrada"; quando **não** encontra, tenta `UPDATE` com ID nulo. **Corrigir no Oracle** antes de usar repasse em produção.
+5. **`ordemPagtoSave`** — sem cron definido (nem comentado); roda apenas na subida via `Iniciar()`.
+6. **Sem testes** — validar manualmente contra API ML e banco Horus.
+7. **Conexão por operação** — cada repository abre/fecha conexão; não há pool compartilhado.
+8. **OAuth `MLCN_CODE`** — após primeira troca, o code expira; tentativa de `findToken` gera `invalid_grant` (ruído no log) se o code antigo permanecer no banco; o refresh costuma resolver.
+9. **Arquivos locais não versionados** — `.env`, `logs/`, `node_modules/`.
+10. **`README.md`** — parcialmente desatualizado em relação ao código (falta `ordemPagto`, `ORACLE_CLIENT_LIB_DIR`, estado dos crons).
 
 ### Tratamento de erros (comportamento atual)
 
@@ -367,6 +467,8 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 | `ordens.js` | `try/catch` por ordem (API + Oracle); log + continua próxima ordem |
 | `produtos.js` | `try/catch` por produto; log + continua próximo item |
 | `perguntas.js` | `try/catch` por pergunta; log + continua próxima pergunta |
+| `ordemPagto.js` | `try/catch` por ordem; log + continua próxima ordem |
+| `getOrdemPagto.js` | Falha API → retorna status `Aberto` e valor `0` |
 | `getDadosFaturamento.js` | Falha API → retorna `{}` e continua |
 | `getEndereco.js` | Falha API → retorna `{}` e continua |
 | `getToken.js` | Falha OAuth → relança erro; `getTokenConfig()` valida antes do uso |
@@ -403,9 +505,9 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 - Credenciais Oracle/ML
 
 **Arquivos auxiliares no repo:**
-- `bkp.js` — backup/utilitário na raiz (verificar antes de usar)
 - `docker-compose.yml` — Oracle XE dev (senha exemplo no compose)
-- `vssver.scc` — legado SourceSafe
+- `info.md` — notas auxiliares
+- `bkp.js` — backup/utilitário na raiz (verificar antes de usar)
 
 Commits e PRs: só quando o usuário pedir explicitamente.
 
@@ -413,18 +515,20 @@ Commits e PRs: só quando o usuário pedir explicitamente.
 
 ## Evoluções prováveis (contexto para planejamento)
 
-Áreas comuns de continuidade que **ainda não existem** no código:
+Áreas comuns de continuidade que **ainda não existem** ou estão **incompletas** no código:
 
 - Webhooks/notifications ML — **perguntas via polling**; mensagens pós-venda ainda não implementadas (ver `MercadoLivre-API.md` seções 5 e 10)
 - Exportação Horus → ML (publicar/atualizar anúncios)
 - Suporte a múltiplas unidades empresariais
 - Integração `MERC_LIVRE_PRDT` / imagens (`DESENV`)
+- Integração PDSD (`prc_mlapi_pdsd_*`) — procedures existem, Node não chama
 - Pool de conexões Oracle
 - Testes de integração mockados
 - Parametrizar site MLB via `.env` (hoje fixo em código)
-- Corrigir SKU/GTIN nos itens de pedido
+- Corrigir SKU/GTIN nos itens de pedido (`ordens.js`)
+- Corrigir lógica de `PRC_MLAPI_ML_PAGTO` no Oracle
+- Reativar crons em `execJobs.js` para sync periódica contínua
 - Limpar `MLCN_CODE` após troca OAuth bem-sucedida (evitar ruído `invalid_grant`)
-- Integração repasse ao vendedor (Relatórios de Faturamento / Provisões — ver `MercadoLivre-API.md` seção 9)
 
 ---
 
@@ -453,7 +557,7 @@ Documentação criada/atualizada para o projeto Avvante/Horus:
 | `src/services/pergunta/getPergunta.js` | Detalhe com `api_version=4` |
 | `src/services/pergunta/perguntas.js` | Orquestrador batch |
 | `src/repositories/perguntaRepository.js` | Chama `PRC_MLAPI_PERGUNTA_UPDATE` |
-| `src/jobs/execJobs.js` | Job `perguntasSave` + cron comentado (`*/5 * * * *`) |
+| `src/jobs/execJobs.js` | Job `perguntasSave` em `Iniciar()`; cron planejado `*/5 * * * *` (comentado) |
 
 **Oracle (aplicar manualmente no banco):**
 
@@ -462,11 +566,30 @@ Documentação criada/atualizada para o projeto Avvante/Horus:
 | `src/oracle/merc_livre_pergunta.tab` | Tabela `MERC_LIVRE_PERGUNTA` |
 | `src/oracle/prc_mlapi_pergunta_update.prc` | Procedure insert/update |
 
-**Documentação atualizada:** `MercadoLivre-API.md` (seções 2, 4, 5, 8, 10), `ARQUITETURA.md`, `README.md`.
-
 **Fora de escopo desta entrega:** mensagens pós-venda (`/messages/*`), webhooks HTTP, view `VIEW_MERC_LIVRE_PERGUNTA`.
 
-Última atualização deste arquivo: junho/2026.
+### Alterações jun/2026 — sync de pagamento/repasse ML
+
+**Código Node:**
+
+| Arquivo | Função |
+|---------|--------|
+| `src/services/ordem/getOrdemPagto.js` | API billing + cálculo valor repassado |
+| `src/services/ordem/ordemPagto.js` | Orquestrador batch |
+| `src/repositories/ordemPagtoRepository.js` | Chama `PRC_MLAPI_ML_PAGTO` |
+| `src/repositories/ordemRepository.js` | `getOrdensPagtoAberto()` — SELECT de ordens elegíveis |
+| `src/jobs/execJobs.js` | Job `ordemPagtoSave` em `Iniciar()`; **sem cron** |
+
+**Oracle (aplicar manualmente no banco):**
+
+| Script | Objeto |
+|--------|--------|
+| `src/oracle/merc_livre_ordem.tab` | Colunas `MLOR_PAGTO_ML_*` |
+| `src/oracle/prc_mlapi_ml_pagto.prc` | Procedure update repasse (**revisar lógica antes de produção**) |
+
+**Documentação atualizada:** `MercadoLivre-API.md` (seções 2, 4, 5, 8, 10), `ARQUITETURA.md`, `README.md` (parcialmente pendente).
+
+Última atualização deste arquivo: 22/jun/2026.
 
 ---
 

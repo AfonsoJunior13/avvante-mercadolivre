@@ -37,7 +37,8 @@ create table DESENV.MERC_LIVRE_ORDEM
   mlor_pagto_ml_data     DATE,
   mlor_pagto_ml_status   VARCHAR2(40),
   mlor_pagto_ml_vlr      NUMBER(10,2),
-  mlor_pagto_ml_dt_proc  DATE
+  mlor_pagto_ml_dt_proc  DATE,
+  mlor_xml_dt_envio      DATE
 )
 tablespace HORUSDATA
   pctfree 10

@@ -6,6 +6,7 @@ const categorias = require('../services/categoria/categorias');
 const produtos = require('../services/produto/produtos');
 const ordens = require('../services/ordem/ordens');
 const ordemPagto = require('../services/ordem/ordemPagto');
+const ordemNfe = require('../services/ordem/ordemNfe');
 const perguntas = require('../services/pergunta/perguntas');
 
 require('dotenv').config();
@@ -70,6 +71,16 @@ async function ordemPagtoSave() {
   }
 }
 
+async function ordemNfeSave() {
+  console.log('*** NF-e ML ***');
+  try {
+    await ordemNfe.ordemNfeEnviar();
+  } catch (error) {
+    console.error('Erro NF-e ML: ', error);
+    await logger.logError(error);
+  }
+}
+
 async function perguntasSave() {
   console.log('*** Perguntas ***');
   try {
@@ -88,6 +99,7 @@ async function Iniciar() {
   await produtosSave();
   await ordensSave();
   await ordemPagtoSave();
+  await ordemNfeSave();
   await perguntasSave();
   console.log(`<< FIM ${new Date().toLocaleString()} >>`);
 }
