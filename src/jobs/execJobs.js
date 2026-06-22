@@ -111,5 +111,7 @@ Iniciar();
 //cron.schedule('0 */12 * * *', tpAnuncioSave); // 12 horas
 //cron.schedule('0 */12 * * *', categoriasSave); // 12 horas
 //cron.schedule('*/5 * * * *', produtosSave); // 5 minutos
-//cron.schedule('*/5 * * * *', ordensSave); // 5 minutos
 //cron.schedule('*/5 * * * *', perguntasSave); // 5 minutos
+//cron.schedule('*/5 * * * *', ordensSave); // 5 minutos
+//cron.schedule('*/5 * * * *', ordemNfeSave); // 5 minutos
+//cron.schedule('*/5 * * * *', ordemPagtoSave); // 5 minutos
