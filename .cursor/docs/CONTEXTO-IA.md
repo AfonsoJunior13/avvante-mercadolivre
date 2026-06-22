@@ -28,13 +28,14 @@ Serviço **Node.js worker** (sem API HTTP) que sincroniza periodicamente dados d
 
 **É:**
 - Integração batch pull (polling) ML → Horus (produtos, pedidos, categorias, tipos de anúncio, **perguntas**, **pagamento/repasse ML**)
+- Envio batch Horus → ML da **NF-e de venda** (XML autorizado pela SEFAZ) para liberar envio/etiqueta
 - Processo de longa duração com `node-cron`
 - Ponte entre axios (API REST) e oracledb (procedures PL/SQL)
 
 **Não é:**
 - API REST própria (sem Express/Fastify)
 - Frontend
-- Envio de dados Horus → Mercado Livre (somente importação ML → Oracle hoje)
+- Exportação completa Horus → ML (publicar/atualizar anúncios ainda não implementado; apenas NF-e)
 - Multi-tenant na mesma instância (uma `UNIDADE_EMPRESARIAL_ID` por `.env`)
 - Projeto com testes automatizados (não há suite de testes)
 
@@ -192,9 +193,10 @@ Arquivo: `src/jobs/execJobs.js`
 | `produtosSave` | `*/5 * * * *` | **comentado** | `services/produto/produtos.js` |
 | `ordensSave` | `*/5 * * * *` | **comentado** | `services/ordem/ordens.js` |
 | `ordemPagtoSave` | (não definido) | **sem cron** | `services/ordem/ordemPagto.js` |
+| `ordemNfeSave` | (não definido) | **sem cron** | `services/ordem/ordemNfe.js` |
 | `perguntasSave` | `*/5 * * * *` | **comentado** | `services/pergunta/perguntas.js` |
 
-**Estado atual:** na subida, `Iniciar()` executa **todos** os jobs **uma vez** em sequência (`token → tpAnuncio → categoria → produto → ordem → ordemPagto → pergunta`). Os `cron.schedule` estão **todos comentados** — o processo fica ocioso após a primeira rodada até ser reiniciado ou até alguém descomentar os crons.
+**Estado atual:** na subida, `Iniciar()` executa **todos** os jobs **uma vez** em sequência (`token → tpAnuncio → categoria → produto → ordem → ordemPagto → ordemNfe → pergunta`). Os `cron.schedule` estão **todos comentados** — o processo fica ocioso após a primeira rodada até ser reiniciado ou até alguém descomentar os crons.
 
 Para novo job: criar função async + `cron.schedule` + exportar lógica no service correspondente + incluir chamada em `Iniciar()`.
 
@@ -206,14 +208,15 @@ services/
   tpAnuncio/   tpAnuncios.js, getTpAnuncios.js
   categoria/   categorias.js, getCategorias.js
   produto/     produtos.js, getProdutosAll.js, getProduto.js
-  ordem/       ordens.js, ordemPagto.js, getOrdensAll.js, getOrdem.js,
-               getDadosFaturamento.js, getEndereco.js, getOrdemPagto.js
+  ordem/       ordens.js, ordemPagto.js, ordemNfe.js, getOrdensAll.js, getOrdem.js,
+               getDadosFaturamento.js, getEndereco.js, getOrdemPagto.js, postNfeXml.js
   pergunta/    perguntas.js, getPerguntasAll.js, getPergunta.js
 
 repositories/
   configRepository.js, produtoRepository.js, ordemRepository.js,
   ordemItemRepository.js, ordemEndRepository.js, ordemPagtoRepository.js,
-  perguntaRepository.js, categoriaRepository.js, tpAnuncioRepository.js
+  ordemNfeRepository.js, perguntaRepository.js, categoriaRepository.js,
+  tpAnuncioRepository.js
 
 utils/
   mlApi.js, jsonLogger.js, execLogger.js, logger.js, oracleErrorHandler.js
@@ -247,6 +250,11 @@ utils/
 | Ordens elegíveis para repasse | `src/repositories/ordemRepository.js` → `getOrdensPagtoAberto()` (SELECT direto) |
 | Persistência repasse ML | `src/repositories/ordemPagtoRepository.js` → `PRC_MLAPI_ML_PAGTO` |
 | DDL/procedure repasse | `src/oracle/merc_livre_ordem.tab` (colunas `MLOR_PAGTO_ML_*`) + `prc_mlapi_ml_pagto.prc` |
+| Envio NF-e ML (Horus → ML) | `src/services/ordem/ordemNfe.js` — pedidos faturados com XML pendente |
+| POST XML NF-e na API ML | `src/services/ordem/postNfeXml.js` (`POST /shipments/{id}/invoice_data?siteId=MLB`) |
+| Ordens elegíveis para envio NF-e | `src/repositories/ordemNfeRepository.js` → `getOrdensNfePendente()` (`VIEW_MLOR_NFE`) |
+| Registro data envio NF-e | `src/repositories/ordemNfeRepository.js` → `PRC_MLAPI_NFE_XML_ENVIO` |
+| DDL/procedure NF-e | `src/oracle/merc_livre_ordem.tab` (coluna `MLOR_XML_DT_ENVIO`) + `prc_mlapi_nfe_xml_envio.prc` + `view_mlor_nfe.sql` |
 
 ---
 
@@ -338,13 +346,77 @@ Quando `payment_info[0].money_release_status === 'released'`:
 
 ---
 
+## Domínio: Envio NF-e ML (jun/2026)
+
+Envio do **XML autorizado da NF-e** (modelo 55) emitida no Horus para o Mercado Livre, destravando o substatus `invoice_pending` e permitindo geração da etiqueta de envio. Fluxo **Horus → ML** (direção oposta à importação de pedidos).
+
+### Pré-requisitos
+
+1. Pedido faturado no Horus vinculado a `MERC_LIVRE_ORDEM` (`PEDIDO_SAIDA_ID` preenchido via fluxo PDSD).
+2. NF-e com status SEFAZ `Aceito` disponível em `NFE_ENVIO` / view `VIEW_MLOR_NFE`.
+3. Coluna `MLOR_XML_DT_ENVIO` em `MERC_LIVRE_ORDEM` — ver `src/oracle/merc_livre_ordem.tab`.
+4. Scripts Oracle aplicados:
+   ```sql
+   ALTER TABLE MERC_LIVRE_ORDEM ADD MLOR_XML_DT_ENVIO DATE;  -- se ainda não existir
+   @src/oracle/prc_mlapi_nfe_xml_envio.prc
+   @src/oracle/view_mlor_nfe.sql
+   ```
+5. Seller **PJ contribuinte** — fluxo de importação de NF-e via API (não DC-e).
+
+### View `VIEW_MLOR_NFE`
+
+Relaciona pedido ML faturado (`PEDIDO_SAIDA` → `PEDIDO_FATURADO` → `MOVIMENTO_ESTOQUE` → `NFE_ENVIO`) com `MERC_LIVRE_ORDEM`.
+
+| Coluna view | Origem | Uso |
+|-------------|--------|-----|
+| `MLOR_ORDER_ID` | `MERC_LIVRE_ORDEM` | ID do pedido ML |
+| `NFE_CHAVE` | `NFE_ENVIO.NFEE_CHAVE` | Chave de acesso (44 dígitos) |
+| `NFE` | `MOVIMENTO_ESTOQUE.MOVI_NR_NOTA_FISCAL` | Número da NF-e |
+| `SR` | `MOVIMENTO_ESTOQUE.MOVI_SR_NOTA_FISCAL` | Série |
+| `NFE_XML` | `NFE_ENVIO.NFEE_3_JSON_PROCESSADO` | XML completo enviado à API ML |
+| `MLOR_XML_DT_ENVIO` | `MERC_LIVRE_ORDEM` | `null` = pendente de envio |
+
+Script: `src/oracle/view_mlor_nfe.sql`.
+
+### Endpoints ML consumidos
+
+| Arquivo | Endpoint |
+|---------|----------|
+| `getOrdem.js` | `GET /orders/{id}` — obtém `shipping.id` (shipment) |
+| `postNfeXml.js` | `POST /shipments/{shipment_id}/invoice_data/?siteId=MLB` — body: XML (`Content-Type: application/xml`) |
+
+Doc ML: [Importar Nota Fiscal](https://developers.mercadolivre.com.br/pt_br/importar-nota-fiscal).
+
+**Importante:** a API ML **não aceita** apenas número/chave da NF-e — exige o **XML completo** (`nfeProc`). Notas de homologação SEFAZ são rejeitadas.
+
+### Fluxo (`ordemNfe.js`)
+
+1. `getOrdensNfePendente()` — SELECT em `VIEW_MLOR_NFE` com `MLOR_XML_DT_ENVIO is null` e `UNIDADE_EMPRESARIAL_ID` do `.env`.
+2. Para cada ordem → `getOrdem(MLOR_ORDER_ID)` — obtém `shipping.id`.
+3. `postNfeXml(shipmentId, nfe_xml)` — envia XML à API ML.
+4. `ordemNfeXmlEnvioUpdate()` → `PRC_MLAPI_NFE_XML_ENVIO` — grava `MLOR_XML_DT_ENVIO = SYSDATE`.
+
+Erro em uma ordem não interrompe o lote (`try/catch` + `logger.logError`). Em falha, **não** atualiza `MLOR_XML_DT_ENVIO` (permite reprocessamento).
+
+### Campos Oracle (`MERC_LIVRE_ORDEM`)
+
+| Coluna Oracle | Origem |
+|---------------|--------|
+| `MLOR_XML_DT_ENVIO` | `SYSDATE` na procedure após envio bem-sucedido à API ML |
+
+### Leitura direta no Oracle (exceção)
+
+`getOrdensNfePendente()` em `ordemNfeRepository.js` faz **SELECT direto** na view (CLOB `NFE_XML` lido como string via `fetchInfo`). Gravação continua via `PRC_MLAPI_NFE_XML_ENVIO`.
+
+---
+
 ## Objetos Oracle — contrato Node ↔ Horus
 
 ### Tabelas principais (schema `HORUS`)
 
 - `MERC_LIVRE_CONFIG` — OAuth
 - `MERC_LIVRE_PRODUTO` — anúncios
-- `MERC_LIVRE_ORDEM` — cabeçalho pedido (inclui colunas de repasse `MLOR_PAGTO_ML_*`)
+- `MERC_LIVRE_ORDEM` — cabeçalho pedido (repasse `MLOR_PAGTO_ML_*`, envio NF-e `MLOR_XML_DT_ENVIO`)
 - `MERC_LIVRE_ORDEM_ITEM` — itens
 - `MERC_LIVRE_ORDEM_END` — endereço entrega
 - `MERC_LIVRE_CATEGORIA` — categorias MLB
@@ -384,6 +456,7 @@ Scripts: `src/oracle/merc_livre_pergunta.tab`, `src/oracle/prc_mlapi_pergunta_up
 | `PRC_MLAPI_ORDEM_ITEM_UPDATE` | `ordemItemRepository.js` |
 | `PRC_MLAPI_ORDEM_END_UPDATE` | `ordemEndRepository.js` |
 | `PRC_MLAPI_ML_PAGTO` | `ordemPagtoRepository.js` |
+| `PRC_MLAPI_NFE_XML_ENVIO` | `ordemNfeRepository.js` |
 | `PRC_MLAPI_PERGUNTA_UPDATE` | `perguntaRepository.js` |
 | `PRC_MLAPI_CATEGORIA_UPDATE` | `categoriaRepository.js` |
 | `PRC_MLAPI_TP_ANUNCIO_UPDATE` | `tpAnuncioRepository.js` |
@@ -394,6 +467,14 @@ Scripts: `src/oracle/merc_livre_pergunta.tab`, `src/oracle/prc_mlapi_pergunta_up
 |--------|---------|--------|
 | `configFind` | `configRepository.js` | `VIEW_MERC_LIVRE_CONFIG` |
 | `getOrdensPagtoAberto` | `ordemRepository.js` | `MERC_LIVRE_ORDEM` |
+| `getOrdensNfePendente` | `ordemNfeRepository.js` | `VIEW_MLOR_NFE` |
+
+### Views Oracle (somente leitura via Node)
+
+| View | Uso |
+|------|-----|
+| `VIEW_MERC_LIVRE_CONFIG` | Config OAuth (`configFind`) |
+| `VIEW_MLOR_NFE` | NF-e pendente de envio ao ML (`getOrdensNfePendente`) |
 
 ### Procedures Oracle **não** integradas ao Node
 
@@ -429,7 +510,13 @@ Endpoints adicionais (repasse ML):
 
 - `GET /billing/integration/group/ML/order/details?order_ids={id}` — detalhes de liberação de valores
 
+Endpoints adicionais (envio NF-e):
+
+- `POST /shipments/{shipment_id}/invoice_data/?siteId=MLB` — importar XML da NF-e (libera etiqueta)
+- `GET /shipments/{shipment_id}/invoice_data?siteId=MLB` — consultar NF-e já enviada
+
 Documentação oficial: https://developers.mercadolivre.com.br/  
+NF-e: https://developers.mercadolivre.com.br/pt_br/importar-nota-fiscal  
 Perguntas: https://developers.mercadolivre.com.br/pt_br/variacoes/perguntas-e-respostas
 
 ---
@@ -453,11 +540,13 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 3. **Crons desabilitados** — todos os `cron.schedule` em `execJobs.js` estão comentados; sincronização periódica só ocorre se o processo for reiniciado ou os crons forem reativados.
 4. **`PRC_MLAPI_ML_PAGTO`** — lógica invertida no script `prc_mlapi_ml_pagto.prc`: quando a ordem **é** encontrada, dispara `ORA-20000` com mensagem "Ordem não encontrada"; quando **não** encontra, tenta `UPDATE` com ID nulo. **Corrigir no Oracle** antes de usar repasse em produção.
 5. **`ordemPagtoSave`** — sem cron definido (nem comentado); roda apenas na subida via `Iniciar()`.
-6. **Sem testes** — validar manualmente contra API ML e banco Horus.
-7. **Conexão por operação** — cada repository abre/fecha conexão; não há pool compartilhado.
-8. **OAuth `MLCN_CODE`** — após primeira troca, o code expira; tentativa de `findToken` gera `invalid_grant` (ruído no log) se o code antigo permanecer no banco; o refresh costuma resolver.
-9. **Arquivos locais não versionados** — `.env`, `logs/`, `node_modules/`.
-10. **`README.md`** — parcialmente desatualizado em relação ao código (falta `ordemPagto`, `ORACLE_CLIENT_LIB_DIR`, estado dos crons).
+6. **`ordemNfeSave`** — sem cron definido; roda apenas na subida via `Iniciar()`.
+7. **Sem testes** — validar manualmente contra API ML e banco Horus.
+8. **Conexão por operação** — cada repository abre/fecha conexão; não há pool compartilhado.
+9. **OAuth `MLCN_CODE`** — após primeira troca, o code expira; tentativa de `findToken` gera `invalid_grant` (ruído no log) se o code antigo permanecer no banco; o refresh costuma resolver.
+10. **Arquivos locais não versionados** — `.env`, `logs/`, `node_modules/`.
+11. **`README.md`** — parcialmente desatualizado em relação ao código (falta `ordemPagto`, `ordemNfe`, `ORACLE_CLIENT_LIB_DIR`, estado dos crons).
+12. **NT 2025.001** — XML da NF-e para pagamentos cartão/PIX deve incluir dados do intermediador ML (`CNPJ 03.007.331/0001-41`, grupo `<card>`, etc.); ver doc ML.
 
 ### Tratamento de erros (comportamento atual)
 
@@ -468,6 +557,7 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 | `produtos.js` | `try/catch` por produto; log + continua próximo item |
 | `perguntas.js` | `try/catch` por pergunta; log + continua próxima pergunta |
 | `ordemPagto.js` | `try/catch` por ordem; log + continua próxima ordem |
+| `ordemNfe.js` | `try/catch` por ordem; log + continua próxima ordem; não grava data em falha |
 | `getOrdemPagto.js` | Falha API → retorna status `Aberto` e valor `0` |
 | `getDadosFaturamento.js` | Falha API → retorna `{}` e continua |
 | `getEndereco.js` | Falha API → retorna `{}` e continua |
@@ -518,7 +608,7 @@ Commits e PRs: só quando o usuário pedir explicitamente.
 Áreas comuns de continuidade que **ainda não existem** ou estão **incompletas** no código:
 
 - Webhooks/notifications ML — **perguntas via polling**; mensagens pós-venda ainda não implementadas (ver `MercadoLivre-API.md` seções 5 e 10)
-- Exportação Horus → ML (publicar/atualizar anúncios)
+- Exportação Horus → ML completa (publicar/atualizar anúncios — NF-e já implementada)
 - Suporte a múltiplas unidades empresariais
 - Integração `MERC_LIVRE_PRDT` / imagens (`DESENV`)
 - Integração PDSD (`prc_mlapi_pdsd_*`) — procedures existem, Node não chama
@@ -588,6 +678,27 @@ Documentação criada/atualizada para o projeto Avvante/Horus:
 | `src/oracle/prc_mlapi_ml_pagto.prc` | Procedure update repasse (**revisar lógica antes de produção**) |
 
 **Documentação atualizada:** `MercadoLivre-API.md` (seções 2, 4, 5, 8, 10), `ARQUITETURA.md`, `README.md` (parcialmente pendente).
+
+### Alterações jun/2026 — envio NF-e ML (Horus → ML)
+
+**Código Node:**
+
+| Arquivo | Função |
+|---------|--------|
+| `src/services/ordem/postNfeXml.js` | POST XML na API ML (`/shipments/{id}/invoice_data`) |
+| `src/services/ordem/ordemNfe.js` | Orquestrador batch |
+| `src/repositories/ordemNfeRepository.js` | `getOrdensNfePendente()` + `PRC_MLAPI_NFE_XML_ENVIO` |
+| `src/jobs/execJobs.js` | Job `ordemNfeSave` em `Iniciar()`; **sem cron** |
+
+**Oracle (aplicar manualmente no banco):**
+
+| Script | Objeto |
+|--------|--------|
+| `src/oracle/merc_livre_ordem.tab` | Coluna `MLOR_XML_DT_ENVIO` |
+| `src/oracle/view_mlor_nfe.sql` | View `VIEW_MLOR_NFE` |
+| `src/oracle/prc_mlapi_nfe_xml_envio.prc` | Procedure update data envio |
+
+**Fora de escopo desta entrega:** anexar NF-e ao pack (`/packs/{id}/fiscal_documents`), DC-e (PF/PJ não-contribuinte), webhooks `shipments`.
 
 Última atualização deste arquivo: 22/jun/2026.
 
