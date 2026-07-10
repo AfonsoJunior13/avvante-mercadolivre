@@ -68,7 +68,7 @@ Mercado Livre OAuth 2.0
 | `axios` | HTTP interno em `utils/mlApi.js` (não usar direto nos services) |
 | `oracledb` | Conexão e execução de procedures |
 | `node-cron` | Agendamento em `execJobs.js` |
-| `dotenv` | `.env` (DB + unidade empresarial + Oracle Client) |
+| `dotenv` | `.env` (DB + unidade empresarial + Oracle Client + `ORDEM_DIAS`) |
 | `qs` | Body OAuth (`application/x-www-form-urlencoded`) |
 | `winston` | Declarado no `package.json`; **logging efetivo** via `utils/logger.js`, `execLogger.js` e `jsonLogger.js` |
 
@@ -83,8 +83,18 @@ DB_USER=
 DB_PASSWORD=
 DB_CONNECT=host:1521/servico
 UNIDADE_EMPRESARIAL_ID=
+ORDEM_DIAS=90
 ORACLE_CLIENT_LIB_DIR=C:\caminho\para\oracle\instant\client
 ```
+
+| Variável | Uso |
+|----------|-----|
+| `DB_*` | Conexão Oracle |
+| `UNIDADE_EMPRESARIAL_ID` | Unidade/loja no Horus (uma por instância) |
+| `ORDEM_DIAS` | Dias retroativos na busca de pedidos (`getOrdensAll.js`) — obrigatório, inteiro positivo (ex.: `90`) |
+| `ORACLE_CLIENT_LIB_DIR` | Caminho do Oracle Instant Client (modo Thick) |
+
+`ORDEM_DIAS` alimenta `order.date_created.from` / `order.date_created.to` em `GET /orders/search`. A API ML só mantém pedidos por ~12 meses; valores maiores que isso não recuperam histórico além desse limite.
 
 **OAuth fica no banco**, tabela `MERC_LIVRE_CONFIG`:
 `MLCN_CLIENT_ID`, `MLCN_CLIENT_SECRET`, `MLCN_CODE`, `MLCN_REDIRECT_URI`, `MLCN_TOKEN`, `MLCN_ACCESS_TOKEN`, `MLCN_USER_ID`.
@@ -125,6 +135,8 @@ Carregado na subida via `src/app.js` → `require('./utils/execLogger')` **antes
 - **Repositories** → gravam binds (env) e confirmação/leitura (rec) via `jsonLogger`.
 
 A pasta `logs/` está no `.gitignore`. Colisão de arquivos no mesmo segundo recebe sufixo `_1`, `_2`, etc.
+
+**Limpeza manual (Windows):** `limparlog.bat` na raiz do repositório apaga todos os arquivos em `logs/` e subpastas (`error`, `exec`, `json/...`), mantendo a estrutura de pastas. Usa `%~dp0` para apontar sempre à pasta do projeto.
 
 ---
 
@@ -237,7 +249,8 @@ utils/
 | Log de execução (console) | `src/utils/execLogger.js` → `logs/exec/yyyymmdd.log` |
 | Log de erros | `src/utils/logger.js` → `logs/error/yyyymmdd.logError` |
 | Log JSON API/Oracle | `src/utils/jsonLogger.js` + `src/utils/mlApi.js` → `logs/json/env/` e `logs/json/rec/` |
-| Filtro de pedidos importados | `src/services/ordem/getOrdensAll.js` (hoje: `paid` + payment `approved`) |
+| Filtro / janela de pedidos importados | `src/services/ordem/getOrdensAll.js` + `.env` `ORDEM_DIAS` (`paid` + payment `approved` + data + paginação) |
+| Limpar arquivos de log | `limparlog.bat` (raiz) → apaga conteúdo de `logs/` e subpastas |
 | Dados fiscais do comprador | `src/services/ordem/getDadosFaturamento.js` |
 | Endereço de entrega | `src/services/ordem/getEndereco.js` (API `/shipments/{id}`) |
 | SKU/GTIN de produtos | `src/services/produto/produtos.js` (`SELLER_SKU`, `GTIN` nos attributes) |
@@ -255,6 +268,37 @@ utils/
 | Ordens elegíveis para envio NF-e | `src/repositories/ordemNfeRepository.js` → `getOrdensNfePendente()` (`VIEW_MLOR_NFE`) |
 | Registro data envio NF-e | `src/repositories/ordemNfeRepository.js` → `PRC_MLAPI_NFE_XML_ENVIO` |
 | DDL/procedure NF-e | `src/oracle/merc_livre_ordem.tab` (coluna `MLOR_XML_DT_ENVIO`) + `prc_mlapi_nfe_xml_envio.prc` + `view_mlor_nfe.sql` |
+
+---
+
+## Domínio: Pedidos / ordens (jul/2026)
+
+Importação **ML → Horus** de vendas pagas. Orquestrador: `ordens.js` → `getOrdensAll` → detalhe/faturamento/endereço → procedures `PRC_MLAPI_ORDEM_*`.
+
+### Filtros e paginação (`getOrdensAll.js`)
+
+| Critério | Onde | Detalhe |
+|----------|------|---------|
+| Status pedido | Query API | `order.status=paid` |
+| Pagamento aprovado | Filtro local | algum `payments[].status === 'approved'` |
+| Janela de datas | Query API + `.env` | `order.date_created.from/to` com base em `ORDEM_DIAS` |
+| Paginação | Query API | `limit=50` + `offset` até `paging.total` |
+| Ordenação | Query API | `sort=date_desc` |
+
+### Limitações da API ML (doc oficial)
+
+- `/orders/search` **exige filtro** além de `seller` (sem filtro não retorna pedidos).
+- Pedidos disponíveis por **até ~12 meses**.
+- Na busca como vendedor, pedidos **cancelados** são filtrados pela API.
+- Canceladas / outros status (`confirmed`, `payment_in_process`, etc.) **não** entram no sync atual do Horus.
+
+### Fluxo (`ordens.js`)
+
+1. `getOrdensAll()` — IDs elegíveis na janela `ORDEM_DIAS` (paginado).
+2. Para cada ID → `getOrdem` + `getDadosFaturamento` + `getEndereco`.
+3. Persistência: `ordemUpdate` / `ordemEndUpdate` / `ordemItemUpdate`.
+
+Erro em uma ordem não interrompe o lote (`try/catch` + `logger.logError`).
 
 ---
 
@@ -501,6 +545,13 @@ Scripts adicionais referem schema `DESENV` (`MERC_LIVRE_PRDT`, `MERC_LIVRE_PRDT_
 - OAuth: `POST https://api.mercadolibre.com/oauth/token`
 - Site fixo: **MLB** (Brasil) em categorias e listing_types
 
+Endpoints de pedidos (importação):
+
+- `GET /orders/search?seller={id}&order.status=paid&order.date_created.from=...&order.date_created.to=...&limit=50&offset=...` — listagem (`getOrdensAll.js`, janela `ORDEM_DIAS`)
+- `GET /orders/{id}` — detalhe (`getOrdem.js`)
+- `GET /orders/{id}/billing_info` — dados fiscais (`getDadosFaturamento.js`)
+- `GET /shipments/{id}` — endereço de entrega (`getEndereco.js`)
+
 Endpoints adicionais (perguntas):
 
 - `GET /my/received_questions/search?api_version=4` — listagem paginada
@@ -547,6 +598,7 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 10. **Arquivos locais não versionados** — `.env`, `logs/`, `node_modules/`.
 11. **`README.md`** — parcialmente desatualizado em relação ao código (falta `ordemPagto`, `ordemNfe`, `ORACLE_CLIENT_LIB_DIR`, estado dos crons).
 12. **NT 2025.001** — XML da NF-e para pagamentos cartão/PIX deve incluir dados do intermediador ML (`CNPJ 03.007.331/0001-41`, grupo `<card>`, etc.); ver doc ML.
+13. **`ORDEM_DIAS`** — obrigatório no `.env`; se ausente ou inválido, `getOrdensAll` lança erro. Não recupera pedidos além da retenção da API (~12 meses) nem cancelados.
 
 ### Tratamento de erros (comportamento atual)
 
@@ -598,6 +650,7 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 - `docker-compose.yml` — Oracle XE dev (senha exemplo no compose)
 - `info.md` — notas auxiliares
 - `bkp.js` — backup/utilitário na raiz (verificar antes de usar)
+- `limparlog.bat` — apaga arquivos em `logs/` e subpastas (Windows)
 
 Commits e PRs: só quando o usuário pedir explicitamente.
 
@@ -700,7 +753,30 @@ Documentação criada/atualizada para o projeto Avvante/Horus:
 
 **Fora de escopo desta entrega:** anexar NF-e ao pack (`/packs/{id}/fiscal_documents`), DC-e (PF/PJ não-contribuinte), webhooks `shipments`.
 
-Última atualização deste arquivo: 22/jun/2026.
+### Alterações jul/2026 — busca de pedidos (`ORDEM_DIAS` + paginação)
+
+**Código Node:**
+
+| Arquivo | Função |
+|---------|--------|
+| `src/services/ordem/getOrdensAll.js` | Janela `ORDEM_DIAS` (`order.date_created.from/to`), filtro `paid` + pagamento `approved`, paginação `limit`/`offset` |
+| `src/services/ordem/ordens.js` | Log da quantidade de ordens elegíveis antes do loop |
+
+**Configuração:**
+
+| Item | Detalhe |
+|------|---------|
+| `.env` → `ORDEM_DIAS` | Inteiro positivo (ex.: `90` = últimos 90 dias); obrigatório |
+
+**Utilitário:**
+
+| Arquivo | Função |
+|---------|--------|
+| `limparlog.bat` (raiz) | Apaga todos os arquivos em `logs/` e subpastas |
+
+**Documentação atualizada:** `CONTEXTO-IA.md`, `ARQUITETURA.md`, `MercadoLivre-API.md`, `README.md`, regra `.cursor/rules/desenvolvimento.mdc`.
+
+Última atualização deste arquivo: 10/jul/2026.
 
 ---
 

@@ -240,6 +240,7 @@ flowchart LR
 |--------|------------------|-----|
 | `.env` | `DB_USER`, `DB_PASSWORD`, `DB_CONNECT` | Conexão Oracle |
 | `.env` | `UNIDADE_EMPRESARIAL_ID` | Identifica a loja/unidade no Horus |
+| `.env` | `ORDEM_DIAS` | Dias retroativos na busca de pedidos (`/orders/search`) |
 | `.env` | `ORACLE_CLIENT_LIB_DIR` | Caminho do Oracle Instant Client (modo Thick) |
 | Banco | `MLCN_CLIENT_ID`, `MLCN_CLIENT_SECRET`, etc. | OAuth Mercado Livre |
 

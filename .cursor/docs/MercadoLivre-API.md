@@ -269,7 +269,9 @@ curl -X GET -H 'Authorization: Bearer $ACCESS_TOKEN' \
 
 `getOrdensAll.js` importa apenas pedidos com:
 - `status = paid`
-- `payments[0].status = approved`
+- pagamento com `status = approved`
+- criados nos últimos `ORDEM_DIAS` dias (`.env`), via `order.date_created.from` / `order.date_created.to`
+- paginação `limit`/`offset` até `paging.total`
 
 ---
 

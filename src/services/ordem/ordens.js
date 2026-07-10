@@ -9,6 +9,7 @@ const { getEndereco } = require('./getEndereco');
 
 async function ordensAtualizar() {
     const resOrdensAll = await getOrdensAll.getOrdensAll();
+    console.log(`> Ordens elegíveis: ${resOrdensAll.length}`);
 
     for (const ordemID of resOrdensAll) {
       try {
