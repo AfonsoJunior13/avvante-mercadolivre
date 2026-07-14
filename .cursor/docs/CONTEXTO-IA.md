@@ -68,7 +68,7 @@ Mercado Livre OAuth 2.0
 | `axios` | HTTP interno em `utils/mlApi.js` (não usar direto nos services) |
 | `oracledb` | Conexão e execução de procedures |
 | `node-cron` | Agendamento em `execJobs.js` |
-| `dotenv` | `.env` (DB + unidade empresarial + Oracle Client + `ORDEM_DIAS`) |
+| `dotenv` | `.env` (DB + unidade + Oracle Client + `ORDEM_DIAS` + `PERGUNTAS_DIAS`) |
 | `qs` | Body OAuth (`application/x-www-form-urlencoded`) |
 | `winston` | Declarado no `package.json`; **logging efetivo** via `utils/logger.js`, `execLogger.js` e `jsonLogger.js` |
 
@@ -84,6 +84,7 @@ DB_PASSWORD=
 DB_CONNECT=host:1521/servico
 UNIDADE_EMPRESARIAL_ID=
 ORDEM_DIAS=90
+PERGUNTAS_DIAS=30
 ORACLE_CLIENT_LIB_DIR=C:\caminho\para\oracle\instant\client
 ```
 
@@ -92,9 +93,12 @@ ORACLE_CLIENT_LIB_DIR=C:\caminho\para\oracle\instant\client
 | `DB_*` | Conexão Oracle |
 | `UNIDADE_EMPRESARIAL_ID` | Unidade/loja no Horus (uma por instância) |
 | `ORDEM_DIAS` | Dias retroativos na busca de pedidos (`getOrdensAll.js`) — obrigatório, inteiro positivo (ex.: `90`) |
+| `PERGUNTAS_DIAS` | Dias retroativos na busca de perguntas (`getPerguntasAll.js`) — obrigatório, inteiro positivo (ex.: `30`) |
 | `ORACLE_CLIENT_LIB_DIR` | Caminho do Oracle Instant Client (modo Thick) |
 
 `ORDEM_DIAS` alimenta `order.date_created.from` / `order.date_created.to` em `GET /orders/search`. A API ML só mantém pedidos por ~12 meses; valores maiores que isso não recuperam histórico além desse limite.
+
+`PERGUNTAS_DIAS` filtra perguntas por `date_created` (a API `/my/received_questions/search` **não** aceita filtro de data na query — ordena `date_created DESC` e corta localmente pela janela).
 
 **OAuth fica no banco**, tabela `MERC_LIVRE_CONFIG`:
 `MLCN_CLIENT_ID`, `MLCN_CLIENT_SECRET`, `MLCN_CODE`, `MLCN_REDIRECT_URI`, `MLCN_TOKEN`, `MLCN_ACCESS_TOKEN`, `MLCN_USER_ID`.
@@ -255,7 +259,7 @@ utils/
 | Endereço de entrega | `src/services/ordem/getEndereco.js` (API `/shipments/{id}`) |
 | SKU/GTIN de produtos | `src/services/produto/produtos.js` (`SELLER_SKU`, `GTIN` nos attributes) |
 | Sync perguntas ML | `src/services/pergunta/perguntas.js` — requer permissão DevCenter *Comunicação pré e pós-venda* |
-| Listagem paginada de perguntas | `src/services/pergunta/getPerguntasAll.js` |
+| Listagem paginada de perguntas | `src/services/pergunta/getPerguntasAll.js` + `.env` `PERGUNTAS_DIAS` (janela + `date_created DESC`) |
 | Detalhe da pergunta + comprador | `src/services/pergunta/getPergunta.js` |
 | DDL/pergunta no Oracle | `src/oracle/merc_livre_pergunta.tab` + `prc_mlapi_pergunta_update.prc` |
 | Sync pagamento/repasse ML | `src/services/ordem/ordemPagto.js` — ordens com repasse em aberto |
@@ -321,14 +325,23 @@ Sincronização **pré-venda** — perguntas públicas feitas nos anúncios. **N
 
 | Arquivo | Endpoint |
 |---------|----------|
-| `getPerguntasAll.js` | `GET /my/received_questions/search?api_version=4` (paginação `limit`/`offset`) |
+| `getPerguntasAll.js` | `GET /my/received_questions/search?api_version=4` (paginação `limit`/`offset`; `sort_fields=date_created` + `sort_types=DESC`; janela `PERGUNTAS_DIAS` filtrada localmente) |
 | `getPergunta.js` | `GET /questions/{id}?api_version=4` (e-mail, telefone e nome do comprador) |
 
 Sempre usar `api_version=4`. Status ML: `UNANSWERED`, `ANSWERED`, `BANNED`, `CLOSED_UNANSWERED`, `DELETED`, `DISABLED`, `UNDER_REVIEW`.
 
+### Janela de datas (`PERGUNTAS_DIAS`)
+
+A API de perguntas recebidas **não** expõe filtro `date_from`/`date_to` (filtros: `item`, `from`, `status`, etc.). O Horus:
+
+1. Lê `PERGUNTAS_DIAS` do `.env` (obrigatório, inteiro positivo).
+2. Ordena por `date_created DESC`.
+3. Inclui só perguntas com `date_created` dentro da janela.
+4. Interrompe a paginação ao encontrar a primeira pergunta mais antiga que o limite (demais páginas estariam fora da janela).
+
 ### Fluxo (`perguntas.js`)
 
-1. `getPerguntasAll()` — lista todas as perguntas recebidas (paginado, 50 por página).
+1. `getPerguntasAll()` — lista perguntas recebidas na janela `PERGUNTAS_DIAS` (paginado, 50 por página).
 2. Para cada pergunta → `getPergunta(id)` — detalhe com dados do comprador.
 3. `extrairDadosComprador(from)` — mapeia `first_name`/`last_name`/`nickname`, `email`, `phone`.
 4. `perguntaRepository.perguntaUpdate()` → `PRC_MLAPI_PERGUNTA_UPDATE`.
@@ -554,7 +567,7 @@ Endpoints de pedidos (importação):
 
 Endpoints adicionais (perguntas):
 
-- `GET /my/received_questions/search?api_version=4` — listagem paginada
+- `GET /my/received_questions/search?api_version=4` — listagem paginada + ordenação `date_created DESC`; janela via `PERGUNTAS_DIAS` (filtro local)
 - `GET /questions/{id}?api_version=4` — detalhe + dados do comprador
 
 Endpoints adicionais (repasse ML):
@@ -599,6 +612,7 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 11. **`README.md`** — parcialmente desatualizado em relação ao código (falta `ordemPagto`, `ordemNfe`, `ORACLE_CLIENT_LIB_DIR`, estado dos crons).
 12. **NT 2025.001** — XML da NF-e para pagamentos cartão/PIX deve incluir dados do intermediador ML (`CNPJ 03.007.331/0001-41`, grupo `<card>`, etc.); ver doc ML.
 13. **`ORDEM_DIAS`** — obrigatório no `.env`; se ausente ou inválido, `getOrdensAll` lança erro. Não recupera pedidos além da retenção da API (~12 meses) nem cancelados.
+14. **`PERGUNTAS_DIAS`** — obrigatório no `.env`; se ausente ou inválido, `getPerguntasAll` lança erro. A API de perguntas não filtra por data na query — o corte é local após ordenação DESC.
 
 ### Tratamento de erros (comportamento atual)
 
@@ -776,7 +790,24 @@ Documentação criada/atualizada para o projeto Avvante/Horus:
 
 **Documentação atualizada:** `CONTEXTO-IA.md`, `ARQUITETURA.md`, `MercadoLivre-API.md`, `README.md`, regra `.cursor/rules/desenvolvimento.mdc`.
 
-Última atualização deste arquivo: 10/jul/2026.
+### Alterações jul/2026 — janela de perguntas (`PERGUNTAS_DIAS`)
+
+**Código Node:**
+
+| Arquivo | Função |
+|---------|--------|
+| `src/services/pergunta/getPerguntasAll.js` | Janela `PERGUNTAS_DIAS` (filtro local por `date_created`); ordenação `date_created DESC`; para paginação ao sair da janela |
+| `src/services/pergunta/perguntas.js` | Log da quantidade de perguntas elegíveis antes do loop |
+
+**Configuração:**
+
+| Item | Detalhe |
+|------|---------|
+| `.env` → `PERGUNTAS_DIAS` | Inteiro positivo (ex.: `30` = últimos 30 dias); obrigatório |
+
+**Nota API:** `/my/received_questions/search` não aceita `date_from`/`date_to` — apenas `item`, `from`, `status`, etc.
+
+Última atualização deste arquivo: 14/jul/2026.
 
 ---
 

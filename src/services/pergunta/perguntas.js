@@ -23,6 +23,7 @@ function extrairDadosComprador(from) {
 
 async function perguntasAtualizar() {
   const resPerguntas = await getPerguntasAll();
+  console.log(`> Perguntas elegíveis: ${resPerguntas.length}`);
 
   for (const pergunta of resPerguntas) {
     try {

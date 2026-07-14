@@ -72,9 +72,11 @@ DB_CONNECT=host:1521/servico
 
 UNIDADE_EMPRESARIAL_ID=1
 ORDEM_DIAS=90
+PERGUNTAS_DIAS=30
 ```
 
-`ORDEM_DIAS` define quantos dias retroativos buscar em `/orders/search` (ex.: `90` = últimos 90 dias).
+`ORDEM_DIAS` define quantos dias retroativos buscar em `/orders/search` (ex.: `90` = últimos 90 dias).  
+`PERGUNTAS_DIAS` define quantos dias retroativos sincronizar perguntas recebidas (ex.: `30` = últimos 30 dias).
 
 As credenciais OAuth (`MLCN_CLIENT_ID`, `MLCN_CLIENT_SECRET`, `MLCN_CODE`, `MLCN_REDIRECT_URI`) são mantidas na tabela `MERC_LIVRE_CONFIG` do Horus, não no `.env`.
 

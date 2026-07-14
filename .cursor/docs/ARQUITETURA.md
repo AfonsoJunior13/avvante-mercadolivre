@@ -167,7 +167,7 @@ Somente pedidos com `status = paid` e pagamento `approved` entram na sincroniza�
 
 ```mermaid
 flowchart LR
-    A[getPerguntasAll] -->|paginação| B[perguntas.js]
+    A[getPerguntasAll] -->|PERGUNTAS_DIAS + paginação DESC| B[perguntas.js]
     B --> C[getPergunta — api_version=4]
     C --> D[perguntaRepository]
     D --> E[PRC_MLAPI_PERGUNTA_UPDATE]
@@ -175,7 +175,7 @@ flowchart LR
     B -.->|erro por pergunta| G[logger.logError + próxima]
 ```
 
-Listagem via `/my/received_questions/search`; detalhe traz e-mail/telefone/nome do comprador. Erro em uma pergunta não interrompe o lote.
+Listagem via `/my/received_questions/search` ordenada por `date_created DESC`; janela definida por `PERGUNTAS_DIAS` no `.env` (filtro local — a API não aceita data na query). Detalhe traz e-mail/telefone/nome do comprador. Erro em uma pergunta não interrompe o lote.
 
 ## Camada de persistência (Oracle)
 
@@ -241,6 +241,7 @@ flowchart LR
 | `.env` | `DB_USER`, `DB_PASSWORD`, `DB_CONNECT` | Conexão Oracle |
 | `.env` | `UNIDADE_EMPRESARIAL_ID` | Identifica a loja/unidade no Horus |
 | `.env` | `ORDEM_DIAS` | Dias retroativos na busca de pedidos (`/orders/search`) |
+| `.env` | `PERGUNTAS_DIAS` | Dias retroativos na busca de perguntas (`/my/received_questions/search`) |
 | `.env` | `ORACLE_CLIENT_LIB_DIR` | Caminho do Oracle Instant Client (modo Thick) |
 | Banco | `MLCN_CLIENT_ID`, `MLCN_CLIENT_SECRET`, etc. | OAuth Mercado Livre |
 

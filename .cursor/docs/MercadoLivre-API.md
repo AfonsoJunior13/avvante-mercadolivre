@@ -588,9 +588,10 @@ flowchart TD
 
 Fluxo batch (polling), igual aos demais domínios:
 
-1. `GET /my/received_questions/search?api_version=4` — listagem paginada (`getPerguntasAll.js`)
-2. `GET /questions/{id}?api_version=4` — detalhe com dados do comprador (`getPergunta.js`)
-3. `PRC_MLAPI_PERGUNTA_UPDATE` — persistência em `MERC_LIVRE_PERGUNTA`
+1. `GET /my/received_questions/search?api_version=4` — listagem paginada (`getPerguntasAll.js`), ordenada por `date_created DESC`
+2. Filtro local pela janela `PERGUNTAS_DIAS` do `.env` (a API **não** aceita `date_from`/`date_to` neste endpoint)
+3. `GET /questions/{id}?api_version=4` — detalhe com dados do comprador (`getPergunta.js`)
+4. `PRC_MLAPI_PERGUNTA_UPDATE` — persistência em `MERC_LIVRE_PERGUNTA`
 
 Job: `perguntasSave` em `execJobs.js` (cron sugerido: 5 minutos).
 
