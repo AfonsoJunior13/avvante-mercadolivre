@@ -567,7 +567,7 @@ Habilitar **Faturamento** em [Permissões funcionais](https://developers.mercado
 Se for integrar repasse ao vendedor:
 
 1. Habilitar permissão **Faturamento** no app ML
-2. Consultar provisões por order: `GET .../group/ML/order/details?order_ids={MLOR_ORDER_ID}`
+2. Consultar provisões por order: `GET .../group/ML/order/details?order_ids={id1,id2,...}` (até **60** IDs por request; Horus agrupa em `getOrdensPagto`)
 3. Persistir `money_release_date`, `money_release_status`, `payment_id` (nova tabela/campos Oracle)
 4. Opcional: job mensal com `monthly/periods` + `payment/details` para conciliação contábil
 5. Avaliar **Conciliação V2** quando acesso à doc estiver disponível

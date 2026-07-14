@@ -263,7 +263,7 @@ utils/
 | Detalhe da pergunta + comprador | `src/services/pergunta/getPergunta.js` |
 | DDL/pergunta no Oracle | `src/oracle/merc_livre_pergunta.tab` + `prc_mlapi_pergunta_update.prc` |
 | Sync pagamento/repasse ML | `src/services/ordem/ordemPagto.js` — ordens com repasse em aberto |
-| API de repasse por pedido | `src/services/ordem/getOrdemPagto.js` (`GET /billing/integration/group/ML/order/details`) |
+| API de repasse por pedido | `src/services/ordem/getOrdemPagto.js` (`GET .../order/details`, até 60 `order_ids`/request) |
 | Ordens elegíveis para repasse | `src/repositories/ordemRepository.js` → `getOrdensPagtoAberto()` (SELECT direto) |
 | Persistência repasse ML | `src/repositories/ordemPagtoRepository.js` → `PRC_MLAPI_ML_PAGTO` |
 | DDL/procedure repasse | `src/oracle/merc_livre_ordem.tab` (colunas `MLOR_PAGTO_ML_*`) + `prc_mlapi_ml_pagto.prc` |
@@ -368,16 +368,15 @@ Sincronização do **repasse ao vendedor** (liberação de valores) para pedidos
 
 | Arquivo | Endpoint |
 |---------|----------|
-| `getOrdemPagto.js` | `GET /billing/integration/group/ML/order/details?order_ids={id}` |
+| `getOrdemPagto.js` | `GET /billing/integration/group/ML/order/details?order_ids={id1,id2,...}` (até **60** IDs/request) |
 
 ### Fluxo (`ordemPagto.js`)
 
 1. `getOrdensPagtoAberto()` — SELECT em `MERC_LIVRE_ORDEM` com `STATUS = 'Ativo'` e `MLOR_PAGTO_ML_STATUS` nulo ou `'Aberto'`.
-2. Para cada `MLOR_ORDER_ID` → `getOrdemPagto(id)` — consulta API de faturamento/repasse.
-3. `mapearPagtoMl()` — deriva `pagto_ml_data`, `pagto_ml_status` (`Quitado` / `Aberto`) e `pagto_ml_vlr`.
-4. `ordemPagtoRepository.ordemPagtoUpdate()` → `PRC_MLAPI_ML_PAGTO`.
+2. Agrupa IDs em lotes de até **60** → `getOrdensPagto(lote)` — uma chamada API por lote.
+3. Para cada ordem do lote → `mapearPagtoMl()` + `ordemPagtoUpdate()` → `PRC_MLAPI_ML_PAGTO`.
 
-Erro em uma ordem não interrompe o lote (`try/catch` + `logger.logError`). Falha na API ML retorna objeto vazio (status `Aberto`, valor `0`) e o loop continua.
+Erro em uma ordem (gravação) não interrompe o lote. Falha na API ML do lote deixa as ordens como `Aberto` / valor `0`.
 
 ### Cálculo do valor repassado (`getOrdemPagto.js`)
 
@@ -572,7 +571,7 @@ Endpoints adicionais (perguntas):
 
 Endpoints adicionais (repasse ML):
 
-- `GET /billing/integration/group/ML/order/details?order_ids={id}` — detalhes de liberação de valores
+- `GET /billing/integration/group/ML/order/details?order_ids={id1,id2,...}` — liberação de valores (até 60 IDs por request)
 
 Endpoints adicionais (envio NF-e):
 
