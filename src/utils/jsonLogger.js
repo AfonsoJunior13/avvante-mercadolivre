@@ -60,12 +60,20 @@ function maskSensitive(data) {
     return data;
   }
 
+  if (Buffer.isBuffer(data) || data instanceof Uint8Array) {
+    return { _type: 'Buffer', length: data.length };
+  }
+
   if (Array.isArray(data)) {
     return data.map(maskSensitive);
   }
 
   if (typeof data !== 'object') {
     return data;
+  }
+
+  if (typeof data.getHeaders === 'function') {
+    return { multipart: true };
   }
 
   const masked = {};

@@ -5,6 +5,7 @@ const produtoUpdate = require('../../repositories/produtoRepository');
 
 async function produtosAtualizar() {
   const resProdutosAll = await getProdutosAll.getProdutosAll();
+  console.log(`> Produtos elegíveis: ${resProdutosAll.length}`);
 
   for (const produtoID of resProdutosAll) {
     try {

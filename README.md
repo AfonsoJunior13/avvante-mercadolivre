@@ -105,6 +105,7 @@ Ao iniciar, o serviço executa **todos os jobs imediatamente** e depois mantém 
 | Produtos | A cada 5 minutos | Sincroniza anúncios do vendedor |
 | Pedidos | A cada 5 minutos | Importa pedidos pagos e aprovados |
 | Perguntas | A cada 5 minutos | Sincroniza perguntas recebidas nos anúncios |
+| Anúncios | A cada 5 minutos | Envia fila Horus → ML (`VIEW_MLAPI_ANUNCIO`) |
 
 ## Objetos Oracle
 
@@ -120,12 +121,13 @@ Scripts DDL e procedures ficam em `src/oracle/`:
 | `MERC_LIVRE_CATEGORIA` | Categorias MLB |
 | `MERC_LIVRE_TP_ANUNCIO` | Tipos de listagem |
 | `MERC_LIVRE_PERGUNTA` | Perguntas recebidas nos anúncios |
+| `MERC_LIVRE_ANUNCIO` | Fila de publicação Horus → ML |
 | `PRC_MLAPI_*` | Procedures de insert/update chamadas pelos repositories |
 
 ## Endpoints da API utilizados
 
 - `POST /oauth/token` — autenticação OAuth
-- `GET /users/{user_id}/items/search` — lista de produtos do vendedor
+- `GET /users/{user_id}/items/search` — lista de produtos do vendedor (paginado; `scan` se > 1000)
 - `GET /items/{id}` — detalhes do produto
 - `GET /orders/search?seller={user_id}` — pedidos do vendedor
 - `GET /orders/{id}` — detalhes do pedido
@@ -134,6 +136,12 @@ Scripts DDL e procedures ficam em `src/oracle/`:
 - `GET /sites/MLB/listing_types` — tipos de anúncio
 - `GET /my/received_questions/search?api_version=4` — perguntas recebidas pelo vendedor
 - `GET /questions/{id}?api_version=4` — detalhe da pergunta (inclui dados do comprador)
+- `GET /users/{id}` — dados do vendedor (tag User Products)
+- `POST /pictures/items/upload` — upload de fotos do anúncio
+- `POST /items/validate` — valida payload sem publicar
+- `POST /items` — cria anúncio
+- `PUT /items/{id}` — atualiza / pausa / ativa / encerra / exclui
+- `POST /items/{id}/description` — descrição do anúncio
 
 ## Docker (Oracle local para desenvolvimento)
 
@@ -156,6 +164,7 @@ Erros são registrados em `src/error.log` pelo utilitário `logger.js`. Mensagen
 - [node-cron](https://github.com/node-cron/node-cron) — agendamento dos jobs
 - [dotenv](https://github.com/motdotla/dotenv) — variáveis de ambiente
 - [winston](https://github.com/winstonjs/winston) — logging (declarado; uso principal via `logger.js`)
+- [form-data](https://github.com/form-data/form-data) — upload multipart das fotos do anúncio
 
 ## Licença
 

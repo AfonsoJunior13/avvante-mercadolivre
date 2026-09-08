@@ -29,6 +29,14 @@ function maskValue(value) {
 }
 
 function parseFormBody(data) {
+  if (data && typeof data.getHeaders === 'function') {
+    return { multipart: true };
+  }
+
+  if (Buffer.isBuffer(data) || data instanceof Uint8Array) {
+    return { _type: 'Buffer', length: data.length };
+  }
+
   if (typeof data !== 'string') {
     return data;
   }

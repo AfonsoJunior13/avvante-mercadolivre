@@ -22,6 +22,7 @@
 | Gestão OAuth/tokens | `gestao-de-identidades-e-acessos-oauth-e-tokens` | https://developers.mercadolivre.com.br/pt_br/gestao-de-identidades-e-acessos-oauth-e-tokens |
 | Pedidos | `pedidos-e-opinioes` | https://developers.mercadolivre.com.br/pt_br/pedidos-e-opinioes |
 | Publicar produtos | `publicacao-de-produtos` | https://developers.mercadolivre.com.br/pt_br/publicacao-de-produtos |
+| **Guia Horus → ML (anúncios)** | — | [PUBLICACAO-ANUNCIOS.md](PUBLICACAO-ANUNCIOS.md) |
 | Identificadores (SKU/GTIN) | `identificadores-de-produtos` | https://developers.mercadolivre.com.br/pt_br/identificadores-de-produtos |
 | Notificações (webhooks) | `produto-receba-notificacoes` | https://developers.mercadolivre.com.br/pt_br/produto-receba-notificacoes |
 | Boas práticas plataforma | `boas-praticas-para-usar-a-plataforma` | https://developers.mercadolivre.com.br/pt_br/boas-praticas-para-usar-a-plataforma |
@@ -257,6 +258,12 @@ Causas: token expirado, já usado, revogado, `redirect_uri` divergente, troca de
 | Tipos de anúncio | GET | `/sites/MLB/listing_types` | `getTpAnuncios.js` |
 | Listar perguntas recebidas | GET | `/my/received_questions/search?api_version=4` | `getPerguntasAll.js` |
 | Detalhe pergunta | GET | `/questions/{id}?api_version=4` | `getPergunta.js` |
+
+### Paginação de anúncios no projeto
+
+`getProdutosAll.js` lista os anúncios do vendedor com:
+- paginação `limit=50` + `offset` até `paging.total`
+- se `paging.total` > 1000, `search_type=scan` + `scroll_id` (limite da API com offset)
 
 ### Exemplo — buscar pedidos (doc oficial)
 

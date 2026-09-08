@@ -1,0 +1,59 @@
+-- Create table
+create table MERC_LIVRE_ANUNCIO_EV
+(
+  merc_livre_anuncio_ev_id VARCHAR2(20) not null,
+  merc_livre_anuncio_id    VARCHAR2(20) not null,
+  embalagem_venda_id       VARCHAR2(20) not null,
+  mlae_qtde                NUMBER(10,2),
+  mlae_valor               NUMBER(10,2),
+  usuario_inclusao         VARCHAR2(20),
+  data_inclusao            DATE,
+  origem_alteracao         VARCHAR2(12),
+  data_alteracao           DATE,
+  usuario_alteracao        VARCHAR2(20),
+  origem_exclusao          VARCHAR2(12),
+  data_exclusao            DATE,
+  usuario_exclusao         VARCHAR2(20),
+  origem_recuperacao       VARCHAR2(12),
+  data_recuperacao         DATE,
+  usuario_recuperacao      VARCHAR2(20),
+  status                   VARCHAR2(15)
+)
+tablespace HORUSDATA
+  pctfree 10
+  initrans 1
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+-- Add comments to the table
+comment on table MERC_LIVRE_ANUNCIO_EV
+  is 'Embalagens de venda amarradas ao anuncio ML (prefixo MLAE). A embalagem aponta para o produto.';
+-- Add comments to the columns
+comment on column MERC_LIVRE_ANUNCIO_EV.merc_livre_anuncio_id
+  is 'FK do anuncio em MERC_LIVRE_ANUNCIO';
+comment on column MERC_LIVRE_ANUNCIO_EV.embalagem_venda_id
+  is 'FK EMBALAGEM_VENDA. A embalagem ja tem PRODUTO_ID';
+comment on column MERC_LIVRE_ANUNCIO_EV.mlae_qtde
+  is 'Quantidade desta embalagem no anuncio';
+comment on column MERC_LIVRE_ANUNCIO_EV.mlae_valor
+  is 'Valor desta embalagem no anuncio';
+-- Create/Recreate primary, unique and foreign key constraints 
+alter table MERC_LIVRE_ANUNCIO_EV
+  add constraint PK_MERC_LIVRE_ANUNCIO_EV_ID primary key (MERC_LIVRE_ANUNCIO_EV_ID)
+  using index
+  tablespace HORUSDATA
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );

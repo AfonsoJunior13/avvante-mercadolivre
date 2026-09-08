@@ -1,0 +1,107 @@
+-- Create table
+create table MERC_LIVRE_ANUNCIO
+(
+  merc_livre_anuncio_id    VARCHAR2(20) not null,
+  unidade_empresarial_id   VARCHAR2(20) not null,
+  mlan_id                  VARCHAR2(80),
+  mlan_user_product_id     VARCHAR2(80),
+  merc_livre_categoria_id  VARCHAR2(20),
+  mlan_acao                VARCHAR2(20),
+  mlan_titulo              VARCHAR2(200),
+  mlan_descricao           VARCHAR2(4000),
+  merc_livre_tp_anuncio_id VARCHAR2(20),
+  mlan_preco               NUMBER(10,2),
+  mlan_qtde                NUMBER(10),
+  mlan_condicao            VARCHAR2(20),
+  marcas_id                VARCHAR2(20),
+  mlan_modelo              VARCHAR2(255),
+  mlan_gtin                VARCHAR2(50),
+  mlan_sku                 VARCHAR2(100),
+  mlan_garantia_tipo       VARCHAR2(80),
+  mlan_garantia_tempo      VARCHAR2(30),
+  mlan_altura_cm           NUMBER(10),
+  mlan_comprimento_cm      NUMBER(10),
+  mlan_largura_cm          NUMBER(10),
+  mlan_peso                NUMBER(10),
+  mlan_modo_envio          VARCHAR2(20),
+  mlan_status              VARCHAR2(30),
+  mlan_permalink           VARCHAR2(500),
+  mlan_erro                VARCHAR2(4000),
+  mlan_data_envio          DATE,
+  mlan_data_atualizacao    DATE,
+  mlan_data_agendamento    DATE,
+  usuario_inclusao         VARCHAR2(20),
+  data_inclusao            DATE,
+  origem_alteracao         VARCHAR2(12),
+  data_alteracao           DATE,
+  usuario_alteracao        VARCHAR2(20),
+  origem_exclusao          VARCHAR2(12),
+  data_exclusao            DATE,
+  usuario_exclusao         VARCHAR2(20),
+  origem_recuperacao       VARCHAR2(12),
+  data_recuperacao         DATE,
+  usuario_recuperacao      VARCHAR2(20),
+  status                   VARCHAR2(15)
+)
+tablespace HORUSDATA
+  pctfree 10
+  initrans 1
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );
+-- Add comments to the table 
+comment on table MERC_LIVRE_ANUNCIO
+  is 'Fila de publicação de anúncios Horus ? Mercado Livre (prefixo MLAN)';
+-- Add comments to the columns 
+comment on column MERC_LIVRE_ANUNCIO.mlan_id
+  is 'item_id retornado pelo ML, ex. MLB1234567890';
+comment on column MERC_LIVRE_ANUNCIO.merc_livre_categoria_id
+  is 'Folha MLB, ex. MLB269615';
+comment on column MERC_LIVRE_ANUNCIO.mlan_acao
+  is 'PUBLICAR, ATUALIZAR, PAUSAR, ATIVAR, ENCERRAR, EXCLUIR';
+comment on column MERC_LIVRE_ANUNCIO.mlan_titulo
+  is 'Enviado como title (modelo clássico) ou family_name (User Products). Limite típico 60 caracteres';
+comment on column MERC_LIVRE_ANUNCIO.mlan_descricao
+  is 'plain_text. POST /items/{id}/description após criar o item';
+comment on column MERC_LIVRE_ANUNCIO.mlan_condicao
+  is 'new, used ou recondicionado (ITEM_CONDITION)';
+comment on column MERC_LIVRE_ANUNCIO.mlan_gtin
+  is 'EAN/UPC. Não é o SKU interno';
+comment on column MERC_LIVRE_ANUNCIO.mlan_sku
+  is 'SELLER_SKU';
+comment on column MERC_LIVRE_ANUNCIO.mlan_garantia_tipo
+  is 'WARRANTY_TYPE, ex. Garantia de fábrica';
+comment on column MERC_LIVRE_ANUNCIO.mlan_garantia_tempo
+  is 'WARRANTY_TIME, ex. 12 meses. Inteiro + unidade';
+comment on column MERC_LIVRE_ANUNCIO.mlan_altura_cm
+  is 'SELLER_PACKAGE_HEIGHT. Inteiro, cm. Pacote, não o produto';
+comment on column MERC_LIVRE_ANUNCIO.mlan_comprimento_cm
+  is 'SELLER_PACKAGE_LENGTH. Inteiro, cm';
+comment on column MERC_LIVRE_ANUNCIO.mlan_largura_cm
+  is 'SELLER_PACKAGE_WIDTH. Inteiro, cm';
+comment on column MERC_LIVRE_ANUNCIO.mlan_peso
+  is 'SELLER_PACKAGE_WEIGHT. Inteiro, gramas';
+comment on column MERC_LIVRE_ANUNCIO.mlan_modo_envio
+  is 'shipping.mode. Padrão me2';
+comment on column MERC_LIVRE_ANUNCIO.mlan_status
+  is 'Status do anúncio no ML: active, paused, closed. Distinto de STATUS (registro Horus)';
+-- Create/Recreate primary, unique and foreign key constraints 
+alter table MERC_LIVRE_ANUNCIO
+  add constraint PK_MERC_LIVRE_ANUNCIO_ID primary key (MERC_LIVRE_ANUNCIO_ID)
+  using index
+  tablespace HORUSDATA
+  pctfree 10
+  initrans 2
+  maxtrans 255
+  storage
+  (
+    initial 64K
+    next 1M
+    minextents 1
+    maxextents unlimited
+  );

@@ -28,14 +28,14 @@ Serviço **Node.js worker** (sem API HTTP) que sincroniza periodicamente dados d
 
 **É:**
 - Integração batch pull (polling) ML → Horus (produtos, pedidos, categorias, tipos de anúncio, **perguntas**, **pagamento/repasse ML**)
-- Envio batch Horus → ML da **NF-e de venda** (XML autorizado pela SEFAZ) para liberar envio/etiqueta
+- Envio batch Horus → ML da **NF-e de venda** e da **fila de anúncios** (`VIEW_MLAPI_ANUNCIO`)
 - Processo de longa duração com `node-cron`
 - Ponte entre axios (API REST) e oracledb (procedures PL/SQL)
 
 **Não é:**
 - API REST própria (sem Express/Fastify)
 - Frontend
-- Exportação completa Horus → ML (publicar/atualizar anúncios ainda não implementado; apenas NF-e)
+- Exportação completa Horus → ML (anúncios: publicar/atualizar/pausar/ativar/encerrar/excluir já no worker; atributos extras da ficha técnica por categoria ainda não)
 - Multi-tenant na mesma instância (uma `UNIDADE_EMPRESARIAL_ID` por `.env`)
 - Projeto com testes automatizados (não há suite de testes)
 
@@ -49,6 +49,7 @@ Serviço **Node.js worker** (sem API HTTP) que sincroniza periodicamente dados d
 | `ARQUITETURA.md` | Diagramas, camadas, fluxos por módulo |
 | `OAUTH-TOKEN.md` | OAuth passo a passo e troubleshooting |
 | `MercadoLivre-API.md` | **Índice da API ML** — endpoints, permissões, notificações, boas práticas |
+| `PUBLICACAO-ANUNCIOS.md` | Campos e fluxo para **enviar** anúncios Horus → ML |
 | `CONTEXTO-IA.md` | **Este arquivo** — convenções, armadilhas, onde mexer |
 | `src/oracle/*.tab`, `*.prc`, `*.vw` | DDL e regras de negócio no banco |
 
@@ -71,6 +72,7 @@ Mercado Livre OAuth 2.0
 | `dotenv` | `.env` (DB + unidade + Oracle Client + `ORDEM_DIAS` + `PERGUNTAS_DIAS`) |
 | `qs` | Body OAuth (`application/x-www-form-urlencoded`) |
 | `winston` | Declarado no `package.json`; **logging efetivo** via `utils/logger.js`, `execLogger.js` e `jsonLogger.js` |
+| `form-data` | Upload multipart das fotos (`POST /pictures/items/upload`) |
 
 ---
 
@@ -211,8 +213,9 @@ Arquivo: `src/jobs/execJobs.js`
 | `ordemPagtoSave` | (não definido) | **sem cron** | `services/ordem/ordemPagto.js` |
 | `ordemNfeSave` | (não definido) | **sem cron** | `services/ordem/ordemNfe.js` |
 | `perguntasSave` | `*/5 * * * *` | **comentado** | `services/pergunta/perguntas.js` |
+| `anunciosSave` | `*/5 * * * *` | **comentado** | `services/anuncio/anuncios.js` |
 
-**Estado atual:** na subida, `Iniciar()` executa **todos** os jobs **uma vez** em sequência (`token → tpAnuncio → categoria → produto → ordem → ordemPagto → ordemNfe → pergunta`). Os `cron.schedule` estão **todos comentados** — o processo fica ocioso após a primeira rodada até ser reiniciado ou até alguém descomentar os crons.
+**Estado atual:** na subida, `Iniciar()` executa **todos** os jobs **uma vez** em sequência (`token → tpAnuncio → categoria → anuncio → produto → ordem → ordemPagto → ordemNfe → pergunta`). Os `cron.schedule` estão **todos comentados** — o processo fica ocioso após a primeira rodada até ser reiniciado ou até alguém descomentar os crons.
 
 Para novo job: criar função async + `cron.schedule` + exportar lógica no service correspondente + incluir chamada em `Iniciar()`.
 
@@ -227,12 +230,14 @@ services/
   ordem/       ordens.js, ordemPagto.js, ordemNfe.js, getOrdensAll.js, getOrdem.js,
                getDadosFaturamento.js, getEndereco.js, getOrdemPagto.js, postNfeXml.js
   pergunta/    perguntas.js, getPerguntasAll.js, getPergunta.js
+  anuncio/     anuncios.js, montarPayload.js, getVendedor.js, postAnuncio.js,
+               putAnuncio.js, postDescricao.js, postImagem.js
 
 repositories/
   configRepository.js, produtoRepository.js, ordemRepository.js,
   ordemItemRepository.js, ordemEndRepository.js, ordemPagtoRepository.js,
   ordemNfeRepository.js, perguntaRepository.js, categoriaRepository.js,
-  tpAnuncioRepository.js
+  tpAnuncioRepository.js, anuncioRepository.js
 
 utils/
   mlApi.js, jsonLogger.js, execLogger.js, logger.js, oracleErrorHandler.js
@@ -258,6 +263,7 @@ utils/
 | Dados fiscais do comprador | `src/services/ordem/getDadosFaturamento.js` |
 | Endereço de entrega | `src/services/ordem/getEndereco.js` (API `/shipments/{id}`) |
 | SKU/GTIN de produtos | `src/services/produto/produtos.js` (`SELLER_SKU`, `GTIN` nos attributes) |
+| Paginação de anúncios importados | `src/services/produto/getProdutosAll.js` (`limit`/`offset`; `search_type=scan` se `paging.total` > 1000) |
 | Sync perguntas ML | `src/services/pergunta/perguntas.js` — requer permissão DevCenter *Comunicação pré e pós-venda* |
 | Listagem paginada de perguntas | `src/services/pergunta/getPerguntasAll.js` + `.env` `PERGUNTAS_DIAS` (janela + `date_created DESC`) |
 | Detalhe da pergunta + comprador | `src/services/pergunta/getPergunta.js` |
@@ -272,6 +278,15 @@ utils/
 | Ordens elegíveis para envio NF-e | `src/repositories/ordemNfeRepository.js` → `getOrdensNfePendente()` (`VIEW_MLOR_NFE`) |
 | Registro data envio NF-e | `src/repositories/ordemNfeRepository.js` → `PRC_MLAPI_NFE_XML_ENVIO` |
 | DDL/procedure NF-e | `src/oracle/merc_livre_ordem.tab` (coluna `MLOR_XML_DT_ENVIO`) + `prc_mlapi_nfe_xml_envio.prc` + `view_mlor_nfe.sql` |
+| Fila de publicação de anúncios | `MERC_LIVRE_ANUNCIO` (`src/oracle/merc_livre_anuncio.tab`) — o anúncio |
+| Embalagens no anúncio | `MERC_LIVRE_ANUNCIO_EV` (`src/oracle/MERC_LIVRE_ANUNCIO_EV.tab`) — amarração `EMBALAGEM_VENDA` |
+| Fotos do anúncio (via produto) | `VIEW_MLAPI_ANUNCIO_IMAGEM` (`src/oracle/view_mlapi_anuncio_imagem.sql`) |
+| Payload de publicação (view) | `VIEW_MLAPI_ANUNCIO` (`src/oracle/view_mlapi_anuncio.sql`) |
+| Guia API de publicação | `.cursor/docs/PUBLICACAO-ANUNCIOS.md` |
+| Envio de anúncios Horus → ML | `src/services/anuncio/anuncios.js` — job `anunciosSave` |
+| Payload do anúncio | `src/services/anuncio/montarPayload.js` |
+| Upload de fotos (LONG RAW) | `src/services/anuncio/postImagem.js` + `getAnuncioImagens()` |
+| Gravação retorno ML | `anuncioRepository.anuncioEnvioUpdate()` → `PRC_MLAPI_AUNCIOS_ENV` |
 
 ---
 
@@ -466,6 +481,175 @@ Erro em uma ordem não interrompe o lote (`try/catch` + `logger.logError`). Em f
 
 ---
 
+## Domínio: Publicação de anúncios (modelo de dados Horus)
+
+Cadastro no ERP para **enviar** anúncios ao ML (Horus → ML). Job `anunciosSave` → `anuncios.anunciosEnviar()`. API e payload: [PUBLICACAO-ANUNCIOS.md](PUBLICACAO-ANUNCIOS.md).
+
+Não confundir com `MERC_LIVRE_PRODUTO`, que é o **espelho do GET /items** (pull). A fila de envio é `MERC_LIVRE_ANUNCIO` + `MERC_LIVRE_ANUNCIO_EV`.
+
+### Relacionamento
+
+O anúncio nasce em `MERC_LIVRE_ANUNCIO`. As **embalagens de venda** que entram nesse anúncio são amarradas em `MERC_LIVRE_ANUNCIO_EV`. A embalagem de venda já está ligada ao **produto** no Horus (`EMBALAGEM_VENDA.PRODUTO_ID` → `PRODUTO`).
+
+```
+PRODUTO (1) ──< (N) EMBALAGEM_VENDA
+                         ▲
+                         │ EMBALAGEM_VENDA_ID
+MERC_LIVRE_ANUNCIO (1) ──< (N) MERC_LIVRE_ANUNCIO_EV
+```
+
+| Fato | Detalhe |
+|------|---------|
+| Cabeçalho do anúncio | Uma linha em `MERC_LIVRE_ANUNCIO` (título, preço, categoria ML, tipo, SKU/GTIN do anúncio, dimensões do pacote, ação) |
+| Composição | 1 anúncio → **N** linhas em `MERC_LIVRE_ANUNCIO_EV` (kit / várias embalagens no mesmo item ML) |
+| Ligação com o cadastro | `MERC_LIVRE_ANUNCIO_EV.EMBALAGEM_VENDA_ID` → `EMBALAGEM_VENDA` → `PRODUTO` |
+| Quantidade e valor por embalagem | `MLAE_QTDE`, `MLAE_VALOR` na EV (não na capa) |
+| Fotos | Vêm do **produto** das embalagens amarradas, não de tabela própria de imagem do anúncio |
+
+A embalagem **não** fica na capa (`MERC_LIVRE_ANUNCIO` não tem `EMBALAGEM_VENDA_ID`). O vínculo é só em `MERC_LIVRE_ANUNCIO_EV`.
+
+### Tabela `MERC_LIVRE_ANUNCIO` (prefixo `MLAN_`)
+
+Script: `src/oracle/merc_livre_anuncio.tab`.
+
+| Coluna | Uso |
+|--------|-----|
+| `MERC_LIVRE_ANUNCIO_ID` | PK Horus |
+| `UNIDADE_EMPRESARIAL_ID` | Unidade/loja |
+| `MLAN_ID` | `item_id` retornado pelo ML (ex. `MLB1234567890`); nulo = ainda não publicado |
+| `MLAN_USER_PRODUCT_ID` | `user_product_id` (modelo User Products) |
+| `MERC_LIVRE_CATEGORIA_ID` | FK categoria MLB (folha) |
+| `MERC_LIVRE_TP_ANUNCIO_ID` | FK tipo de listagem (`gold_special`, `gold_pro`, …) |
+| `MLAN_ACAO` | `PUBLICAR`, `ATUALIZAR`, `PAUSAR`, `ATIVAR`, `ENCERRAR`, `EXCLUIR` (view filtra também com inicial maiúscula) |
+| `MLAN_TITULO` / `MLAN_DESCRICAO` | Título (clássico) ou `family_name` (UP); descrição `plain_text` |
+| `MLAN_PRECO` / `MLAN_QTDE` | Preço e estoque do anúncio |
+| `MLAN_CONDICAO` | `new`, `used` ou recondicionado |
+| `MARCAS_ID` / `MLAN_MODELO` | Marca Horus + modelo |
+| `MLAN_GTIN` / `MLAN_SKU` | EAN/UPC do anúncio e `SELLER_SKU` |
+| `MLAN_GARANTIA_TIPO` / `MLAN_GARANTIA_TEMPO` | `WARRANTY_TYPE` / `WARRANTY_TIME` |
+| `MLAN_ALTURA_CM` / `MLAN_COMPRIMENTO_CM` / `MLAN_LARGURA_CM` / `MLAN_PESO` | Pacote ME2 (cm / gramas) |
+| `MLAN_MODO_ENVIO` | `shipping.mode` (padrão `me2`) |
+| `MLAN_STATUS` | Status no ML (`active`, `paused`, `closed`) — distinto de `STATUS` do registro Horus |
+| `MLAN_PERMALINK` / `MLAN_ERRO` | URL do anúncio e último erro da API |
+| `MLAN_DATA_ENVIO` / `MLAN_DATA_ATUALIZACAO` / `MLAN_DATA_AGENDAMENTO` | Controle da fila |
+
+### Tabela `MERC_LIVRE_ANUNCIO_EV` (prefixo `MLAE_`)
+
+Script: `src/oracle/MERC_LIVRE_ANUNCIO_EV.tab`.
+
+| Coluna | Uso |
+|--------|-----|
+| `MERC_LIVRE_ANUNCIO_EV_ID` | PK Horus |
+| `MERC_LIVRE_ANUNCIO_ID` | FK do anúncio (obrigatório) |
+| `EMBALAGEM_VENDA_ID` | FK da embalagem de venda do Horus (obrigatório). A embalagem já tem `PRODUTO_ID` |
+| `MLAE_QTDE` | Quantidade dessa embalagem no anúncio |
+| `MLAE_VALOR` | Valor dessa embalagem no anúncio |
+| `STATUS` | Registro Horus (`Ativo`, etc.) |
+
+Cadastro Horus de origem (fora deste repositório, schema ERP):
+
+| Tabela | Papel |
+|--------|-------|
+| `EMBALAGEM_VENDA` | Unidade de venda do produto (código de barras, SKU da embalagem, dimensões). Tem `PRODUTO_ID` |
+| `PRODUTO` | Cadastro do item; fotos em `FOTOGRAFIA_ID`, `FOTOGRAFIA1_ID`, `FOTOGRAFIA2_ID` → `FOTO_PRODUTO` |
+
+### Views de leitura para envio ao ML
+
+Contrato de **SELECT** do worker. O cadastro fica nas tabelas; o envio lê destas duas views (`anuncioRepository.js`).
+
+| View | Script | Papel no envio |
+|------|--------|----------------|
+| `VIEW_MLAPI_ANUNCIO` | `src/oracle/view_mlapi_anuncio.sql` | Dados do anúncio (título, preço, categoria ML, tipo, atributos, ação) |
+| `VIEW_MLAPI_ANUNCIO_IMAGEM` | `src/oracle/view_mlapi_anuncio_imagem.sql` | Imagens do anúncio (`FOPR_FOTO`) para `pictures` / upload multipart |
+
+Padrão: **leitura** SELECT direto na view (como `VIEW_MLOR_NFE`); **gravação** do retorno ML (`MLAN_ID`, datas, erro) via procedure `PRC_MLAPI_*`.
+
+#### `VIEW_MLAPI_ANUNCIO`
+
+Monta o payload a partir de `MERC_LIVRE_ANUNCIO`, resolvendo IDs do ML (categoria e tipo de anúncio) e a descrição da marca. Só retorna linhas com ação pendente.
+
+**Joins**
+
+| Origem | Join | Tipo |
+|--------|------|------|
+| `MERC_LIVRE_ANUNCIO` | base | — |
+| `MERC_LIVRE_CATEGORIA` | `MERC_LIVRE_CATEGORIA_ID` | interno (anúncio sem categoria **não** aparece) |
+| `MERC_LIVRE_TP_ANUNCIO` | `MERC_LIVRE_TP_ANUNCIO_ID` | interno (anúncio sem tipo **não** aparece) |
+| `MARCAS` | `MARCAS_ID` = `MARCA_ID` | externo (`(+)`) — marca pode ser nula |
+
+**Filtro:** `MLAN_ACAO in ('Publicar','Atualizar','Pausar','Ativar','Encerrar','Excluir')`. A coluna de saída `MLAN_ACAO` vem com `upper(...)`.
+
+**Não inclui** embalagens (`MERC_LIVRE_ANUNCIO_EV`). Composição do kit: ler a tabela EV à parte, pela PK do anúncio.
+
+| Coluna da view | Origem | Uso no POST/PUT `/items` |
+|----------------|--------|--------------------------|
+| `UNIDADE_EMPRESARIAL_ID` | `MERC_LIVRE_ANUNCIO` | Filtrar pela unidade do `.env` |
+| `MERC_LIVRE_ANUNCIO_ID` | `MERC_LIVRE_ANUNCIO` | PK Horus; chave para imagens e EV |
+| `MLAN_ID` | `MERC_LIVRE_ANUNCIO` | `item_id` ML; nulo = ainda não publicado (`PUBLICAR`) |
+| `MLAN_USER_PRODUCT_ID` | `MERC_LIVRE_ANUNCIO` | `user_product_id` (User Products) |
+| `MLTA_TP_ANUNCIO_ID` | `MERC_LIVRE_TP_ANUNCIO.MLTA_ID` | `listing_type_id` (ex. `gold_special`) |
+| `MLTA_CATEGORIA_ID` | `MERC_LIVRE_CATEGORIA.MLCA_ID` | `category_id` MLB (ex. `MLB269615`). Nome da coluna é `MLTA_*` por alias da view; o valor é o ID de **categoria** |
+| `MLAN_TITULO` | `MERC_LIVRE_ANUNCIO` | `title` (clássico) ou `family_name` (UP) |
+| `MLAN_DESCRICAO` | `MERC_LIVRE_ANUNCIO` | `POST /items/{id}/description` (`plain_text`) — **não** entra no POST do item |
+| `MLAN_PRECO` | `MERC_LIVRE_ANUNCIO` | `price` |
+| `MLAN_QTDE` | `MERC_LIVRE_ANUNCIO` | `available_quantity` |
+| `MLAN_CONDICAO` | `MERC_LIVRE_ANUNCIO` | `ITEM_CONDITION` / `condition` |
+| `MLTA_MARCA_DESCRICAO` | `MARCAS.MARC_DESCRICAO` | atributo `BRAND` |
+| `MLAN_MODELO` | `MERC_LIVRE_ANUNCIO` | atributo `MODEL` |
+| `MLAN_GTIN` | `MERC_LIVRE_ANUNCIO` | atributo `GTIN` |
+| `MLAN_SKU` | `MERC_LIVRE_ANUNCIO` | atributo `SELLER_SKU` |
+| `MLAN_GARANTIA_TIPO` | `MERC_LIVRE_ANUNCIO` | `sale_terms` `WARRANTY_TYPE` |
+| `MLAN_GARANTIA_TEMPO` | `MERC_LIVRE_ANUNCIO` | `sale_terms` `WARRANTY_TIME` |
+| `MLAN_ALTURA_CM` | `MERC_LIVRE_ANUNCIO` | `SELLER_PACKAGE_HEIGHT` |
+| `MLAN_COMPRIMENTO_CM` | `MERC_LIVRE_ANUNCIO` | `SELLER_PACKAGE_LENGTH` |
+| `MLAN_LARGURA_CM` | `MERC_LIVRE_ANUNCIO` | `SELLER_PACKAGE_WIDTH` |
+| `MLAN_PESO` | `MERC_LIVRE_ANUNCIO` | `SELLER_PACKAGE_WEIGHT` (gramas) |
+| `MLAN_MODO_ENVIO` | `MERC_LIVRE_ANUNCIO` | `shipping.mode` (padrão `me2`) |
+| `MLAN_ACAO` | `upper(MLAN_ACAO)` | Roteia o endpoint: `PUBLICAR`, `ATUALIZAR`, `PAUSAR`, `ATIVAR`, `ENCERRAR`, `EXCLUIR` |
+
+#### `VIEW_MLAPI_ANUNCIO_IMAGEM`
+
+Lista as fotos a enviar junto com o anúncio. Não há tabela de imagem do anúncio: as fotos vêm do **produto** das embalagens amarradas.
+
+**Caminho:** `MERC_LIVRE_ANUNCIO` → `MERC_LIVRE_ANUNCIO_EV` → `EMBALAGEM_VENDA` → `PRODUTO` → `FOTO_PRODUTO`.
+
+Até **3** fotos por produto, via `UNION ALL`:
+
+| Slot no produto | Coluna |
+|-----------------|--------|
+| 1ª | `PRODUTO.FOTOGRAFIA_ID` |
+| 2ª | `PRODUTO.FOTOGRAFIA1_ID` |
+| 3ª | `PRODUTO.FOTOGRAFIA2_ID` |
+
+Slot vazio (FK nula) não gera linha. Várias embalagens do mesmo produto podem repetir a mesma foto (`UNION ALL`, sem `DISTINCT`).
+
+**Não filtra** `MLAN_ACAO`. No job, cruzar com `VIEW_MLAPI_ANUNCIO` por `MERC_LIVRE_ANUNCIO_ID`.
+
+| Coluna da view | Origem | Uso |
+|----------------|--------|-----|
+| `MERC_LIVRE_ANUNCIO_ID` | `MERC_LIVRE_ANUNCIO` | Ligar à linha da `VIEW_MLAPI_ANUNCIO` |
+| `MLAN_ID` | `MERC_LIVRE_ANUNCIO` | `item_id` ML (anúncio já publicado: `POST /items/{id}/pictures`) |
+| `FOTO_PRODUTO_ID` | `FOTO_PRODUTO` | PK da foto no Horus |
+| `FOPR_FOTO` | `FOTO_PRODUTO` | **LONG RAW** com os bytes da imagem. Upload `POST /pictures/items/upload` (multipart); o `id` entra em `pictures[]` |
+| `PRINCIPAL` | view (`Sim` / `Nao`) | `Sim` = foto de capa (primeira no array enviado ao ML) |
+
+Capa: ordenar `PRINCIPAL = Sim` primeiro. Não usar a ordem do `UNION` como regra — o campo `PRINCIPAL` manda.
+
+### Fluxo do worker (`anuncios.js`)
+
+1. `getAnunciosPendentes()` — `VIEW_MLAPI_ANUNCIO` filtrada por `UNIDADE_EMPRESARIAL_ID`.
+2. `GET /users/{id}` — tag `user_product_seller` (título vs `family_name`).
+3. Por anúncio, conforme `MLAN_ACAO`:
+   - `PUBLICAR` — upload das fotos → `POST /items/validate` → `POST /items` → descrição → `PRC_MLAPI_AUNCIOS_ENV`
+   - `ATUALIZAR` — fotos + `PUT /items/{id}` + descrição
+   - `PAUSAR` / `ATIVAR` / `ENCERRAR` — `PUT` com `status`
+   - `EXCLUIR` — `closed` e depois `deleted: true`
+4. Procedure `PRC_MLAPI_AUNCIOS_ENV` (`P_MERC_LIVRE_ANUNCIO_ID`, `P_MLAN_ID`): grava `MLAN_ID`, `MLAN_DATA_ENVIO = SYSDATE`, zera `MLAN_ACAO`.
+
+Erro em um anúncio não interrompe o lote. Falha na descrição após o POST do item **não** impede gravar o `MLAN_ID` (evita republicar duplicado).
+
+---
+
 ## Objetos Oracle — contrato Node ↔ Horus
 
 ### Tabelas principais (schema `HORUS`)
@@ -478,6 +662,8 @@ Erro em uma ordem não interrompe o lote (`try/catch` + `logger.logError`). Em f
 - `MERC_LIVRE_CATEGORIA` — categorias MLB
 - `MERC_LIVRE_TP_ANUNCIO` — tipos de listagem
 - `MERC_LIVRE_PERGUNTA` — perguntas recebidas nos anúncios (prefixo colunas `MLQT_`)
+- `MERC_LIVRE_ANUNCIO` — fila de publicação Horus → ML (prefixo `MLAN_`); o anúncio em si
+- `MERC_LIVRE_ANUNCIO_EV` — embalagens de venda amarradas ao anúncio (prefixo `MLAE_`); a embalagem aponta para o produto
 
 ### Tabela `MERC_LIVRE_PERGUNTA` — campos principais
 
@@ -516,6 +702,7 @@ Scripts: `src/oracle/merc_livre_pergunta.tab`, `src/oracle/prc_mlapi_pergunta_up
 | `PRC_MLAPI_PERGUNTA_UPDATE` | `perguntaRepository.js` |
 | `PRC_MLAPI_CATEGORIA_UPDATE` | `categoriaRepository.js` |
 | `PRC_MLAPI_TP_ANUNCIO_UPDATE` | `tpAnuncioRepository.js` |
+| `PRC_MLAPI_AUNCIOS_ENV` | `anuncioRepository.js` |
 
 ### Consultas diretas no Node (somente leitura)
 
@@ -524,6 +711,8 @@ Scripts: `src/oracle/merc_livre_pergunta.tab`, `src/oracle/prc_mlapi_pergunta_up
 | `configFind` | `configRepository.js` | `VIEW_MERC_LIVRE_CONFIG` |
 | `getOrdensPagtoAberto` | `ordemRepository.js` | `MERC_LIVRE_ORDEM` |
 | `getOrdensNfePendente` | `ordemNfeRepository.js` | `VIEW_MLOR_NFE` |
+| `getAnunciosPendentes` | `anuncioRepository.js` | `VIEW_MLAPI_ANUNCIO` |
+| `getAnuncioImagens` | `anuncioRepository.js` | `VIEW_MLAPI_ANUNCIO_IMAGEM` (`FOPR_FOTO` LONG RAW → Buffer) |
 
 ### Views Oracle (somente leitura via Node)
 
@@ -531,6 +720,8 @@ Scripts: `src/oracle/merc_livre_pergunta.tab`, `src/oracle/prc_mlapi_pergunta_up
 |------|-----|
 | `VIEW_MERC_LIVRE_CONFIG` | Config OAuth (`configFind`) |
 | `VIEW_MLOR_NFE` | NF-e pendente de envio ao ML (`getOrdensNfePendente`) |
+| `VIEW_MLAPI_ANUNCIO` | Envio de anúncios ao ML (`getAnunciosPendentes`) |
+| `VIEW_MLAPI_ANUNCIO_IMAGEM` | Imagens do anúncio — LONG RAW `FOPR_FOTO` + `PRINCIPAL` (`getAnuncioImagens`) |
 
 ### Procedures Oracle **não** integradas ao Node
 
@@ -544,8 +735,6 @@ Scripts em `src/oracle/` sem chamada nos repositories atuais:
 | `prc_mlapi_endereco_insert.prc` | Endereço |
 | `prc_mlapi_pdsd_insert.prc`, `prc_mlapi_pdsd_exec.prc` | Pedido de saída (PDSD) |
 
-Scripts adicionais referem schema `DESENV` (`MERC_LIVRE_PRDT`, `MERC_LIVRE_PRDT_IMAGEM`) — possível evolução futura, **não integrados** ao fluxo Node atual.
-
 **Regra:** regras de negócio pesadas (gerar ID, validar duplicidade, commit) ficam nas **procedures**, não no Node.
 
 ---
@@ -556,6 +745,11 @@ Scripts adicionais referem schema `DESENV` (`MERC_LIVRE_PRDT`, `MERC_LIVRE_PRDT_
 - Auth: `Authorization: Bearer {MLCN_ACCESS_TOKEN}`
 - OAuth: `POST https://api.mercadolibre.com/oauth/token`
 - Site fixo: **MLB** (Brasil) em categorias e listing_types
+
+Endpoints de anúncios (importação ML → Horus, `MERC_LIVRE_PRODUTO`):
+
+- `GET /users/{user_id}/items/search?limit=50&offset=...` — listagem paginada (`getProdutosAll.js`); se `paging.total` > 1000 usa `search_type=scan` + `scroll_id`
+- `GET /items/{id}` — detalhe (`getProduto.js`)
 
 Endpoints de pedidos (importação):
 
@@ -577,6 +771,16 @@ Endpoints adicionais (envio NF-e):
 
 - `POST /shipments/{shipment_id}/invoice_data/?siteId=MLB` — importar XML da NF-e (libera etiqueta)
 - `GET /shipments/{shipment_id}/invoice_data?siteId=MLB` — consultar NF-e já enviada
+
+Endpoints adicionais (publicação de anúncios):
+
+- `GET /users/{id}` — tag `user_product_seller`
+- `POST /pictures/items/upload` — upload multipart da foto (`FOPR_FOTO`)
+- `POST /items/validate` — validar payload (HTTP 204)
+- `POST /items` — criar anúncio
+- `PUT /items/{id}` — atualizar / pausar / ativar / encerrar / excluir
+- `POST /items/{id}/description` — descrição após criar
+- `PUT /items/{id}/description?api_version=2` — atualizar descrição
 
 Documentação oficial: https://developers.mercadolivre.com.br/  
 NF-e: https://developers.mercadolivre.com.br/pt_br/importar-nota-fiscal  
@@ -623,6 +827,7 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 | `perguntas.js` | `try/catch` por pergunta; log + continua próxima pergunta |
 | `ordemPagto.js` | `try/catch` por ordem; log + continua próxima ordem |
 | `ordemNfe.js` | `try/catch` por ordem; log + continua próxima ordem; não grava data em falha |
+| `anuncios.js` | `try/catch` por anúncio; log + continua próximo; descrição falha não impede gravar `MLAN_ID` |
 | `getOrdemPagto.js` | Falha API → retorna status `Aberto` e valor `0` |
 | `getDadosFaturamento.js` | Falha API → retorna `{}` e continua |
 | `getEndereco.js` | Falha API → retorna `{}` e continua |
@@ -674,9 +879,9 @@ Commits e PRs: só quando o usuário pedir explicitamente.
 Áreas comuns de continuidade que **ainda não existem** ou estão **incompletas** no código:
 
 - Webhooks/notifications ML — **perguntas via polling**; mensagens pós-venda ainda não implementadas (ver `MercadoLivre-API.md` seções 5 e 10)
-- Exportação Horus → ML completa (publicar/atualizar anúncios — NF-e já implementada)
+- Exportação Horus → ML de anúncios implementada (`anunciosSave`). Atributos extras da ficha técnica (por categoria) ainda não. Guia: [PUBLICACAO-ANUNCIOS.md](PUBLICACAO-ANUNCIOS.md)
 - Suporte a múltiplas unidades empresariais
-- Integração `MERC_LIVRE_PRDT` / imagens (`DESENV`)
+- Integração `MERC_LIVRE_ANUNCIO` + `MERC_LIVRE_ANUNCIO_EV` — worker publica via `VIEW_MLAPI_ANUNCIO` / `VIEW_MLAPI_ANUNCIO_IMAGEM` e `PRC_MLAPI_AUNCIOS_ENV`
 - Integração PDSD (`prc_mlapi_pdsd_*`) — procedures existem, Node não chama
 - Pool de conexões Oracle
 - Testes de integração mockados
@@ -806,7 +1011,40 @@ Documentação criada/atualizada para o projeto Avvante/Horus:
 
 **Nota API:** `/my/received_questions/search` não aceita `date_from`/`date_to` — apenas `item`, `from`, `status`, etc.
 
-Última atualização deste arquivo: 14/jul/2026.
+### Alterações set/2026 — modelo de dados da publicação (anúncio + embalagens)
+
+DDL e views no Oracle para a fila Horus → ML.
+
+| Script | Objeto |
+|--------|--------|
+| `src/oracle/merc_livre_anuncio.tab` | `MERC_LIVRE_ANUNCIO` — cabeçalho do anúncio |
+| `src/oracle/MERC_LIVRE_ANUNCIO_EV.tab` | `MERC_LIVRE_ANUNCIO_EV` — embalagens de venda no anúncio (`EMBALAGEM_VENDA_ID` → produto) |
+| `src/oracle/view_mlapi_anuncio.sql` | `VIEW_MLAPI_ANUNCIO` — SELECT do worker para dados do anúncio (categoria/tipo ML, marca, ação) |
+| `src/oracle/view_mlapi_anuncio_imagem.sql` | `VIEW_MLAPI_ANUNCIO_IMAGEM` — SELECT do worker para imagens (`FOPR_FOTO` LONG RAW + `PRINCIPAL`) |
+
+### Alterações set/2026 — envio de anúncios Horus → ML
+
+**Código Node:**
+
+| Arquivo | Função |
+|---------|--------|
+| `src/services/anuncio/anuncios.js` | Orquestrador batch (`MLAN_ACAO`) |
+| `src/services/anuncio/montarPayload.js` | JSON `POST/PUT /items` (clássico vs User Products) |
+| `src/services/anuncio/getVendedor.js` | Tag `user_product_seller` |
+| `src/services/anuncio/postImagem.js` | Multipart `POST /pictures/items/upload` |
+| `src/services/anuncio/postAnuncio.js` | Validate + `POST /items` |
+| `src/services/anuncio/putAnuncio.js` | `PUT /items/{id}` |
+| `src/services/anuncio/postDescricao.js` | Descrição após criar/atualizar |
+| `src/repositories/anuncioRepository.js` | Views + `PRC_MLAPI_AUNCIOS_ENV` |
+| `src/jobs/execJobs.js` | Job `anunciosSave` em `Iniciar()`; cron planejado `*/5 * * * *` (comentado) |
+
+**Oracle:** `PRC_MLAPI_AUNCIOS_ENV` (`P_MERC_LIVRE_ANUNCIO_ID`, `P_MLAN_ID`).
+
+### Alterações set/2026 — paginação do pull de anúncios (`getProdutosAll`)
+
+`GET /users/{user_id}/items/search` passou a percorrer todas as páginas (`limit=50` + `offset`). Se `paging.total` > 1000, usa `search_type=scan` + `scroll_id` (limite da API com offset).
+
+Última atualização deste arquivo: 08/set/2026.
 
 ---
 

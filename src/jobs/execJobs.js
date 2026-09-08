@@ -8,6 +8,7 @@ const ordens = require('../services/ordem/ordens');
 const ordemPagto = require('../services/ordem/ordemPagto');
 const ordemNfe = require('../services/ordem/ordemNfe');
 const perguntas = require('../services/pergunta/perguntas');
+const anuncios = require('../services/anuncio/anuncios');
 
 require('dotenv').config();
 
@@ -91,16 +92,28 @@ async function perguntasSave() {
   }
 }
 
+async function anunciosSave() {
+  console.log('*** Anuncios ML ***');
+  try {
+    await anuncios.anunciosEnviar();
+  } catch (error) {
+    console.error('Erro Anuncio ML: ', error);
+    await logger.logError(error);
+  }
+}
+
 async function Iniciar() {
   console.log(`<< INICIO ${new Date().toLocaleString()} >>`);
   await refreshToken();
   await tpAnuncioSave();
   await categoriasSave();
+  await anunciosSave();
   await produtosSave();
   await ordensSave();
   await ordemPagtoSave();
   await ordemNfeSave();
   await perguntasSave();
+  await anunciosSave();
   console.log(`<< FIM ${new Date().toLocaleString()} >>`);
 }
 
@@ -115,3 +128,4 @@ Iniciar();
 //cron.schedule('*/5 * * * *', ordensSave); // 5 minutos
 //cron.schedule('*/5 * * * *', ordemNfeSave); // 5 minutos
 //cron.schedule('*/5 * * * *', ordemPagtoSave); // 5 minutos
+//cron.schedule('*/5 * * * *', anunciosSave); // 5 minutos

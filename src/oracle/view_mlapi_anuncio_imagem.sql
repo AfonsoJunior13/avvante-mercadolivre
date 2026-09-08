@@ -1,0 +1,58 @@
+create or replace view view_mlapi_anuncio_imagem as
+select TAB.*
+  from (select MLA.MERC_LIVRE_ANUNCIO_ID,
+               MLA.MLAN_ID,
+               FP.FOTO_PRODUTO_ID,
+               FP.FOPR_FOTO,
+               'Nao' PRINCIPAL
+               
+          from MERC_LIVRE_ANUNCIO    MLA,
+               MERC_LIVRE_ANUNCIO_EV MLE,
+               EMBALAGEM_VENDA       EV,
+               PRODUTO               PR,
+               FOTO_PRODUTO          FP
+
+         where MLA.MERC_LIVRE_ANUNCIO_ID = MLE.MERC_LIVRE_ANUNCIO_ID
+           and MLE.EMBALAGEM_VENDA_ID    = EV.EMBALAGEM_VENDA_ID
+           and EV.PRODUTO_ID             = PR.PRODUTO_ID
+           and PR.FOTOGRAFIA_ID          = FP.FOTO_PRODUTO_ID
+
+        union all
+
+        select MLA.MERC_LIVRE_ANUNCIO_ID,
+               MLA.MLAN_ID,
+               FP.FOTO_PRODUTO_ID,
+               FP.FOPR_FOTO,
+               'Nao' PRINCIPAL
+
+          from MERC_LIVRE_ANUNCIO    MLA,
+               MERC_LIVRE_ANUNCIO_EV MLE,
+               EMBALAGEM_VENDA       EV,
+               PRODUTO               PR,
+               FOTO_PRODUTO          FP
+
+         where MLA.MERC_LIVRE_ANUNCIO_ID = MLE.MERC_LIVRE_ANUNCIO_ID
+           and MLE.EMBALAGEM_VENDA_ID    = EV.EMBALAGEM_VENDA_ID
+           and EV.PRODUTO_ID             = PR.PRODUTO_ID
+           and PR.FOTOGRAFIA1_ID         = FP.FOTO_PRODUTO_ID
+
+        union all
+
+        select MLA.MERC_LIVRE_ANUNCIO_ID,
+               MLA.MLAN_ID,
+               FP.FOTO_PRODUTO_ID,
+               FP.FOPR_FOTO,
+               'Sim' PRINCIPAL
+
+          from MERC_LIVRE_ANUNCIO    MLA,
+               MERC_LIVRE_ANUNCIO_EV MLE,
+               EMBALAGEM_VENDA       EV,
+               PRODUTO               PR,
+               FOTO_PRODUTO          FP
+
+         where MLA.MERC_LIVRE_ANUNCIO_ID = MLE.MERC_LIVRE_ANUNCIO_ID
+           and MLE.EMBALAGEM_VENDA_ID    = EV.EMBALAGEM_VENDA_ID
+           and EV.PRODUTO_ID             = PR.PRODUTO_ID
+           and PR.FOTOGRAFIA2_ID         = FP.FOTO_PRODUTO_ID
+
+       ) TAB;

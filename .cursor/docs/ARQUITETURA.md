@@ -128,7 +128,7 @@ categorias.js     →  categoriaRepository  →  PRC_MLAPI_CATEGORIA_UPDATE  →
 
 ```mermaid
 flowchart TD
-    A[getProdutosAll] -->|GET /users/{id}/items/search| B[Lista de IDs]
+    A[getProdutosAll] -->|GET /users/{id}/items/search paginado| B[Lista de IDs]
     B --> C[getProduto]
     C -->|GET /items/{id}| D[Dados do anúncio]
     D --> E[produtos.js — monta objeto]
@@ -139,7 +139,7 @@ flowchart TD
     G -.->|erro| J[logger.logError + próximo produto]
 ```
 
-Campos extraídos dos atributos ML: `SELLER_SKU` e `GTIN`. Erro em um produto não interrompe o lote.
+Paginação `limit=50` + `offset` até `paging.total`. Se `total` > 1000, a API exige `search_type=scan` + `scroll_id`. Campos extraídos dos atributos ML: `SELLER_SKU` e `GTIN`. Erro em um produto não interrompe o lote.
 
 ### 5. Pedidos
 
@@ -177,6 +177,16 @@ flowchart LR
 
 Listagem via `/my/received_questions/search` ordenada por `date_created DESC`; janela definida por `PERGUNTAS_DIAS` no `.env` (filtro local — a API não aceita data na query). Detalhe traz e-mail/telefone/nome do comprador. Erro em uma pergunta não interrompe o lote.
 
+### Publicação de anúncios (Horus → ML)
+
+```
+VIEW_MLAPI_ANUNCIO → anuncios.js → (fotos VIEW_MLAPI_ANUNCIO_IMAGEM → POST /pictures/items/upload)
+                                 → POST /items/validate + POST /items  (ou PUT /items/{id})
+                                 → PRC_MLAPI_AUNCIOS_ENV (MLAN_ID)
+```
+
+Fila por `MLAN_ACAO` (`PUBLICAR`, `ATUALIZAR`, `PAUSAR`, `ATIVAR`, `ENCERRAR`, `EXCLUIR`). `FOPR_FOTO` é LONG RAW; `PRINCIPAL = Sim` é a capa. Erro em um anúncio não interrompe o lote.
+
 ## Camada de persistência (Oracle)
 
 ### Tabelas principais
@@ -184,7 +194,9 @@ Listagem via `/my/received_questions/search` ordenada por `date_created DESC`; j
 | Tabela | Conteúdo |
 |--------|----------|
 | `MERC_LIVRE_CONFIG` | Credenciais OAuth, tokens, user_id |
-| `MERC_LIVRE_PRODUTO` | Anúncios sincronizados |
+| `MERC_LIVRE_PRODUTO` | Anúncios sincronizados (pull `GET /items`) |
+| `MERC_LIVRE_ANUNCIO` | Fila de publicação Horus → ML (cabeçalho do anúncio) |
+| `MERC_LIVRE_ANUNCIO_EV` | Embalagens de venda amarradas ao anúncio (`EMBALAGEM_VENDA` → `PRODUTO`) |
 | `MERC_LIVRE_ORDEM` | Cabeçalho do pedido (valores, cliente, endereço fiscal) |
 | `MERC_LIVRE_ORDEM_ITEM` | Itens do pedido |
 | `MERC_LIVRE_ORDEM_END` | Endereço de entrega (shipping) |
@@ -197,6 +209,8 @@ Listagem via `/my/received_questions/search` ordenada por `date_created DESC`; j
 |------|-----|
 | `VIEW_MERC_LIVRE_CONFIG` | Leitura de config OAuth + flag `EXPIRES` |
 | `VIEW_MERC_LIVRE_PRODUTO` | Consulta de produtos no Horus |
+| `VIEW_MLAPI_ANUNCIO` | Envio Horus → ML: dados do anúncio (`getAnunciosPendentes`) |
+| `VIEW_MLAPI_ANUNCIO_IMAGEM` | Envio Horus → ML: imagens LONG RAW `FOPR_FOTO` + `PRINCIPAL` (`getAnuncioImagens`) |
 
 ### Procedures (contrato Node ↔ Oracle)
 
@@ -210,6 +224,7 @@ Listagem via `/my/received_questions/search` ordenada por `date_created DESC`; j
 | `PRC_MLAPI_CATEGORIA_UPDATE` | `categoriaRepository.categoriaUpdate` |
 | `PRC_MLAPI_TP_ANUNCIO_UPDATE` | `tpAnuncioRepository.tpAnuncioUpdate` |
 | `PRC_MLAPI_PERGUNTA_UPDATE` | `perguntaRepository.perguntaUpdate` |
+| `PRC_MLAPI_AUNCIOS_ENV` | `anuncioRepository.anuncioEnvioUpdate` |
 
 Erros de negócio Oracle (`ORA-20000`) são interpretados por `utils/oracleErrorHandler.js` antes de propagar ao caller.
 
@@ -223,6 +238,7 @@ Erros de negócio Oracle (`ORA-20000`) são interpretados por `utils/oracleError
 | `produtosSave` | `*/5 * * * *` | 5 minutos |
 | `ordensSave` | `*/5 * * * *` | 5 minutos |
 | `perguntasSave` | `*/5 * * * *` | 5 minutos |
+| `anunciosSave` | `*/5 * * * *` | 5 minutos |
 
 Na subida, `Iniciar()` executa **todos** os jobs em sequência antes de registrar os crons.
 
@@ -307,6 +323,7 @@ flowchart TB
 | `node-cron` | Agendamento |
 | `dotenv` | Variáveis de ambiente |
 | `qs` | Body `x-www-form-urlencoded` no OAuth |
+| `form-data` | Upload multipart das fotos do anúncio |
 | `winston` | Declarado; logging efetivo via `logger.js`, `execLogger.js`, `jsonLogger.js` |
 
 ## Mapa de arquivos por responsabilidade
@@ -333,16 +350,24 @@ src/
 │   │   ├── produtos.js             # Loop + try/catch por produto
 │   │   ├── getProdutosAll.js
 │   │   └── getProduto.js
-│   └── ordem/
-│       ├── ordens.js               # Orquestrador + try/catch por ordem
-│       ├── getOrdensAll.js
-│       ├── getOrdem.js
-│       ├── getDadosFaturamento.js
-│       └── getEndereco.js
-│   └── pergunta/
-│       ├── perguntas.js            # Loop + try/catch por pergunta
-│       ├── getPerguntasAll.js
-│       └── getPergunta.js
+│   ├── ordem/
+│   │   ├── ordens.js               # Orquestrador + try/catch por ordem
+│   │   ├── getOrdensAll.js
+│   │   ├── getOrdem.js
+│   │   ├── getDadosFaturamento.js
+│   │   └── getEndereco.js
+│   ├── pergunta/
+│   │   ├── perguntas.js            # Loop + try/catch por pergunta
+│   │   ├── getPerguntasAll.js
+│   │   └── getPergunta.js
+│   └── anuncio/
+│       ├── anuncios.js             # Orquestrador Horus → ML
+│       ├── montarPayload.js
+│       ├── getVendedor.js
+│       ├── postAnuncio.js
+│       ├── putAnuncio.js
+│       ├── postDescricao.js
+│       └── postImagem.js
 ├── repositories/                   # Procedures + logJsonEnv/logJsonRec
 │   ├── configRepository.js
 │   ├── produtoRepository.js
@@ -351,7 +376,8 @@ src/
 │   ├── ordemEndRepository.js
 │   ├── perguntaRepository.js
 │   ├── categoriaRepository.js
-│   └── tpAnuncioRepository.js
+│   ├── tpAnuncioRepository.js
+│   └── anuncioRepository.js
 ├── utils/
 │   ├── execLogger.js               # Console → logs/exec + logs/error
 │   ├── logger.js                   # logError → logs/error
@@ -385,7 +411,7 @@ O `docker-compose.yml` provê um **Oracle XE 21** local (`gvenzl/oracle-xe:21.3.
 - **Logs locais:** toda execução gera arquivos em `logs/` (exec, error, json); não versionados.
 - **Repasse ao vendedor:** não implementado (ver `MercadoLivre-API.md` seção 9).
 
-Última atualização: junho/2026.
+Última atualização: setembro/2026.
 
 ## Referência
 
