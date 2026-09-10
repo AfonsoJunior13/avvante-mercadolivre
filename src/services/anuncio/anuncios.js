@@ -82,7 +82,24 @@ async function gravarEnvio(anuncio, mlanId) {
   await anuncioEnvioUpdate({
     merc_livre_anuncio_id: anuncio.merc_livre_anuncio_id,
     mlan_id: mlanId,
+    mlan_erro: null,
   });
+}
+
+async function gravarErro(anuncio, error) {
+  const mlanErro = String(mensagemErroMl(error) || 'Erro ao publicar anúncio').slice(0, 4000);
+
+  try {
+    await anuncioEnvioUpdate({
+      merc_livre_anuncio_id: anuncio.merc_livre_anuncio_id,
+      mlan_id: anuncio.mlan_id || null,
+      mlan_erro: mlanErro,
+    });
+  } catch (erroGravacao) {
+    logger.logError(
+      new Error(`Anúncio ${anuncio.merc_livre_anuncio_id} ao gravar MLAN_ERRO: ${erroGravacao.message || erroGravacao}`)
+    );
+  }
 }
 
 async function publicar(anuncio, userProductSeller) {
@@ -211,7 +228,9 @@ async function anunciosEnviar() {
     try {
       await processarAnuncio(anuncio, userProductSeller);
     } catch (error) {
-      logger.logError(new Error(`Anúncio ${anuncio.merc_livre_anuncio_id}: ${mensagemErroMl(error)}`));
+      const mensagem = mensagemErroMl(error);
+      logger.logError(new Error(`Anúncio ${anuncio.merc_livre_anuncio_id}: ${mensagem}`));
+      await gravarErro(anuncio, error);
     }
   }
 }

@@ -254,7 +254,7 @@ Causas: token expirado, já usado, revogado, `redirect_uri` divergente, troca de
 | Detalhe pedido | GET | `/orders/{id}` | `getOrdem.js` |
 | Faturamento | GET | `/orders/{id}/billing_info` | `getDadosFaturamento.js` |
 | Envio/endereço | GET | `/shipments/{id}` | `getEndereco.js` |
-| Categorias MLB | GET | `/sites/MLB/categories` | `getCategorias.js` |
+| Listar categorias | GET | `/sites/MLB/categories` + `/categories/{id}` | `getCategorias.js` |
 | Tipos de anúncio | GET | `/sites/MLB/listing_types` | `getTpAnuncios.js` |
 | Listar perguntas recebidas | GET | `/my/received_questions/search?api_version=4` | `getPerguntasAll.js` |
 | Detalhe pergunta | GET | `/questions/{id}?api_version=4` | `getPergunta.js` |

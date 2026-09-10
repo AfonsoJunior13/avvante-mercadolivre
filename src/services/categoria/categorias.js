@@ -4,6 +4,7 @@ const categoriaUpdate = require('../../repositories/categoriaRepository');
 async function categoriasAtualizar() {
   try {
     const resCategorias = await getCategorias.getCategorias();
+    console.log(`> Categorias folha: ${resCategorias.length}`);
     await categoriaUpdate.categoriaUpdate(resCategorias);
   } catch (error) {
     console.error('Erro ao processar categorias.');

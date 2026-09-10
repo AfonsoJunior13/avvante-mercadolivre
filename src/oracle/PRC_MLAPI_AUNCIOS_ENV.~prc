@@ -8,10 +8,10 @@ begin
   
   update MERC_LIVRE_ANUNCIO M
      set M.MLAN_DATA_ENVIO = sysdate,
-         M.MLAN_ID         = P_MLAN_ID
+         M.MLAN_ID         = P_MLAN_ID,
+         M.MLAN_ACAO       = null
    where M.MERC_LIVRE_ANUNCIO_ID = P_MERC_LIVRE_ANUNCIO_ID;
-   
-  
+     
   commit;
 
 end PRC_MLAPI_AUNCIOS_ENV;

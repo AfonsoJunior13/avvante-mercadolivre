@@ -2,17 +2,14 @@ function valorPresente(valor) {
   return valor !== null && valor !== undefined && String(valor).trim() !== '';
 }
 
+function freteGratis(valor) {
+  return String(valor || '').trim().toUpperCase() === 'SIM';
+}
+
 function mapearCondicao(valor) {
-  const texto = String(valor || '').toLowerCase();
-
-  if (texto.includes('recond')) {
-    return { condition: 'new', item_condition: 'Recondicionado' };
-  }
-  if (texto.includes('used') || texto.includes('usado')) {
-    return { condition: 'used', item_condition: 'Usado' };
-  }
-
-  return { condition: 'new', item_condition: 'Novo' };
+  const value_id = String(valor || '').trim();
+  const condition = value_id === '2230581' ? 'used' : 'new';
+  return { condition, value_id };
 }
 
 function pushAtributo(attributes, id, valueName) {
@@ -30,14 +27,17 @@ function pushMedida(attributes, id, valor, unidade) {
 }
 
 function montarAtributos(anuncio) {
-  const { condition, item_condition } = mapearCondicao(anuncio.condicao);
+  const { condition, value_id } = mapearCondicao(anuncio.condicao);
   const attributes = [];
 
-  pushAtributo(attributes, 'ITEM_CONDITION', item_condition);
+  if (valorPresente(value_id)) {
+    attributes.push({ id: 'ITEM_CONDITION', value_id });
+  }
   pushAtributo(attributes, 'BRAND', anuncio.marca);
   pushAtributo(attributes, 'MODEL', anuncio.modelo);
   pushAtributo(attributes, 'GTIN', anuncio.gtin);
   pushAtributo(attributes, 'SELLER_SKU', anuncio.sku);
+  pushAtributo(attributes, 'GRITS_NUMBER', anuncio.grits);
   pushMedida(attributes, 'SELLER_PACKAGE_HEIGHT', anuncio.altura_cm, 'cm');
   pushMedida(attributes, 'SELLER_PACKAGE_LENGTH', anuncio.comprimento_cm, 'cm');
   pushMedida(attributes, 'SELLER_PACKAGE_WIDTH', anuncio.largura_cm, 'cm');
@@ -72,7 +72,7 @@ function montarPayload(anuncio, { userProductSeller = false, pictures = [], incl
     shipping: {
       mode: valorPresente(anuncio.modo_envio) ? String(anuncio.modo_envio).trim() : 'me2',
       local_pick_up: false,
-      free_shipping: false,
+      free_shipping: freteGratis(anuncio.frete_gratis),
     },
     attributes,
   };

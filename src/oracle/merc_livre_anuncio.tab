@@ -17,6 +17,7 @@ create table MERC_LIVRE_ANUNCIO
   mlan_modelo              VARCHAR2(255),
   mlan_gtin                VARCHAR2(50),
   mlan_sku                 VARCHAR2(100),
+  mlan_grits               VARCHAR2(20),
   mlan_garantia_tipo       VARCHAR2(80),
   mlan_garantia_tempo      VARCHAR2(30),
   mlan_altura_cm           NUMBER(10),
@@ -24,6 +25,7 @@ create table MERC_LIVRE_ANUNCIO
   mlan_largura_cm          NUMBER(10),
   mlan_peso                NUMBER(10),
   mlan_modo_envio          VARCHAR2(20),
+  mlan_frete_gratis        VARCHAR2(3),
   mlan_status              VARCHAR2(30),
   mlan_permalink           VARCHAR2(500),
   mlan_erro                VARCHAR2(4000),
@@ -56,7 +58,7 @@ tablespace HORUSDATA
   );
 -- Add comments to the table 
 comment on table MERC_LIVRE_ANUNCIO
-  is 'Fila de publicação de anúncios Horus ? Mercado Livre (prefixo MLAN)';
+  is 'Fila de publica˜˜o de an˜ncios Horus ? Mercado Livre (prefixo MLAN)';
 -- Add comments to the columns 
 comment on column MERC_LIVRE_ANUNCIO.mlan_id
   is 'item_id retornado pelo ML, ex. MLB1234567890';
@@ -65,21 +67,23 @@ comment on column MERC_LIVRE_ANUNCIO.merc_livre_categoria_id
 comment on column MERC_LIVRE_ANUNCIO.mlan_acao
   is 'PUBLICAR, ATUALIZAR, PAUSAR, ATIVAR, ENCERRAR, EXCLUIR';
 comment on column MERC_LIVRE_ANUNCIO.mlan_titulo
-  is 'Enviado como title (modelo clássico) ou family_name (User Products). Limite típico 60 caracteres';
+  is 'Enviado como title (modelo cl˜ssico) ou family_name (User Products). Limite t˜pico 60 caracteres';
 comment on column MERC_LIVRE_ANUNCIO.mlan_descricao
-  is 'plain_text. POST /items/{id}/description após criar o item';
+  is 'plain_text. POST /items/{id}/description ap˜s criar o item';
 comment on column MERC_LIVRE_ANUNCIO.mlan_condicao
-  is 'new, used ou recondicionado (ITEM_CONDITION)';
+  is 'value_id de ITEM_CONDITION no ML, ex. 2230284 Novo, 2230581 Usado, 2230582 Recondicionado';
 comment on column MERC_LIVRE_ANUNCIO.mlan_gtin
-  is 'EAN/UPC. Não é o SKU interno';
+  is 'EAN/UPC. N˜o ˜ o SKU interno';
 comment on column MERC_LIVRE_ANUNCIO.mlan_sku
   is 'SELLER_SKU';
+comment on column MERC_LIVRE_ANUNCIO.mlan_grits
+  is 'GRITS_NUMBER (quantidade de cascalhos / granulometria da lixa)';
 comment on column MERC_LIVRE_ANUNCIO.mlan_garantia_tipo
-  is 'WARRANTY_TYPE, ex. Garantia de fábrica';
+  is 'WARRANTY_TYPE, ex. Garantia de f˜brica';
 comment on column MERC_LIVRE_ANUNCIO.mlan_garantia_tempo
   is 'WARRANTY_TIME, ex. 12 meses. Inteiro + unidade';
 comment on column MERC_LIVRE_ANUNCIO.mlan_altura_cm
-  is 'SELLER_PACKAGE_HEIGHT. Inteiro, cm. Pacote, não o produto';
+  is 'SELLER_PACKAGE_HEIGHT. Inteiro, cm. Pacote, n˜o o produto';
 comment on column MERC_LIVRE_ANUNCIO.mlan_comprimento_cm
   is 'SELLER_PACKAGE_LENGTH. Inteiro, cm';
 comment on column MERC_LIVRE_ANUNCIO.mlan_largura_cm
@@ -87,9 +91,9 @@ comment on column MERC_LIVRE_ANUNCIO.mlan_largura_cm
 comment on column MERC_LIVRE_ANUNCIO.mlan_peso
   is 'SELLER_PACKAGE_WEIGHT. Inteiro, gramas';
 comment on column MERC_LIVRE_ANUNCIO.mlan_modo_envio
-  is 'shipping.mode. Padrão me2';
+  is 'shipping.mode. Padr˜o me2';
 comment on column MERC_LIVRE_ANUNCIO.mlan_status
-  is 'Status do anúncio no ML: active, paused, closed. Distinto de STATUS (registro Horus)';
+  is 'Status do an˜ncio no ML: active, paused, closed. Distinto de STATUS (registro Horus)';
 -- Create/Recreate primary, unique and foreign key constraints 
 alter table MERC_LIVRE_ANUNCIO
   add constraint PK_MERC_LIVRE_ANUNCIO_ID primary key (MERC_LIVRE_ANUNCIO_ID)

@@ -50,19 +50,27 @@ function parseFormBody(data) {
 }
 
 async function get(rotina, url, config = {}) {
-  logJsonEnv(rotina, {
-    method: 'GET',
-    url,
-    headers: sanitizeHeaders(config.headers),
-    params: config.params || null,
-  });
+  const { skipJsonLog, ...axiosConfig } = config;
+
+  if (!skipJsonLog) {
+    logJsonEnv(rotina, {
+      method: 'GET',
+      url,
+      headers: sanitizeHeaders(axiosConfig.headers),
+      params: axiosConfig.params || null,
+    });
+  }
 
   try {
-    const response = await axios.get(url, config);
-    logJsonRec(rotina, response.data);
+    const response = await axios.get(url, axiosConfig);
+    if (!skipJsonLog) {
+      logJsonRec(rotina, response.data);
+    }
     return response;
   } catch (error) {
-    logJsonRec(rotina, error.response?.data || { error: error.message });
+    if (!skipJsonLog) {
+      logJsonRec(rotina, error.response?.data || { error: error.message });
+    }
     throw error;
   }
 }

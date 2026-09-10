@@ -10,7 +10,7 @@ A integração cobre os fluxos principais de operação no Mercado Livre:
 |--------|-----------|
 | **Autenticação OAuth** | Obtém e renova tokens de acesso (`access_token` / `refresh_token`) com base nas credenciais cadastradas no Horus |
 | **Tipos de anúncio** | Importa os tipos de listagem disponíveis no site MLB (`listing_types`) |
-| **Categorias** | Importa a árvore de categorias do Mercado Livre Brasil (`sites/MLB/categories`) |
+| **Categorias** | Importa a árvore de categorias MLB e grava as **folhas** publicáveis (`buy_it_now`) |
 | **Produtos** | Sincroniza anúncios do vendedor (título, preço, estoque, SKU, GTIN, categoria, etc.) |
 | **Pedidos** | Importa pedidos pagos e aprovados, incluindo dados de faturamento, endereço de entrega e itens |
 
@@ -73,10 +73,12 @@ DB_CONNECT=host:1521/servico
 UNIDADE_EMPRESARIAL_ID=1
 ORDEM_DIAS=90
 PERGUNTAS_DIAS=30
+CATEGORIA=N
 ```
 
 `ORDEM_DIAS` define quantos dias retroativos buscar em `/orders/search` (ex.: `90` = últimos 90 dias).  
-`PERGUNTAS_DIAS` define quantos dias retroativos sincronizar perguntas recebidas (ex.: `30` = últimos 30 dias).
+`PERGUNTAS_DIAS` define quantos dias retroativos sincronizar perguntas recebidas (ex.: `30` = últimos 30 dias).  
+`CATEGORIA=S` dispara o sync da árvore de categorias; `CATEGORIA=N` não executa.
 
 As credenciais OAuth (`MLCN_CLIENT_ID`, `MLCN_CLIENT_SECRET`, `MLCN_CODE`, `MLCN_REDIRECT_URI`) são mantidas na tabela `MERC_LIVRE_CONFIG` do Horus, não no `.env`.
 
@@ -132,7 +134,7 @@ Scripts DDL e procedures ficam em `src/oracle/`:
 - `GET /orders/search?seller={user_id}` — pedidos do vendedor
 - `GET /orders/{id}` — detalhes do pedido
 - `GET /orders/{id}/billing_info` — dados de faturamento (CPF/CNPJ, endereço)
-- `GET /sites/MLB/categories` — categorias
+- `GET /sites/MLB/categories` — raízes; `GET /categories/{id}` — desce a árvore e grava folhas publicáveis
 - `GET /sites/MLB/listing_types` — tipos de anúncio
 - `GET /my/received_questions/search?api_version=4` — perguntas recebidas pelo vendedor
 - `GET /questions/{id}?api_version=4` — detalhe da pergunta (inclui dados do comprador)

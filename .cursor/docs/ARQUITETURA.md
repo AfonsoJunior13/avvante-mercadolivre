@@ -120,9 +120,11 @@ tpAnuncios.js     →  tpAnuncioRepository  →  PRC_MLAPI_TP_ANUNCIO_UPDATE  �
 ### 3. Categorias
 
 ```
-getCategorias.js  →  mlApi.get('getCategorias', ...)  →  GET /sites/MLB/categories
+getCategorias.js  →  GET /sites/MLB/categories + GET /categories/{id} (árvore)
 categorias.js     →  categoriaRepository  →  PRC_MLAPI_CATEGORIA_UPDATE  →  MERC_LIVRE_CATEGORIA
 ```
+
+Percorre a árvore MLB e grava só **folhas** publicáveis (`listing_allowed` + `buy_it_now`). `MLCA_NAME` recebe o caminho (`Ferramentas > ... > Lixas`).
 
 ### 4. Produtos
 
@@ -182,7 +184,7 @@ Listagem via `/my/received_questions/search` ordenada por `date_created DESC`; j
 ```
 VIEW_MLAPI_ANUNCIO → anuncios.js → (fotos VIEW_MLAPI_ANUNCIO_IMAGEM → POST /pictures/items/upload)
                                  → POST /items/validate + POST /items  (ou PUT /items/{id})
-                                 → PRC_MLAPI_AUNCIOS_ENV (MLAN_ID)
+                                 → PRC_MLAPI_AUNCIOS_ENV (MLAN_ID ou MLAN_ERRO)
 ```
 
 Fila por `MLAN_ACAO` (`PUBLICAR`, `ATUALIZAR`, `PAUSAR`, `ATIVAR`, `ENCERRAR`, `EXCLUIR`). `FOPR_FOTO` é LONG RAW; `PRINCIPAL = Sim` é a capa. Erro em um anúncio não interrompe o lote.
@@ -257,7 +259,8 @@ flowchart LR
 | `.env` | `DB_USER`, `DB_PASSWORD`, `DB_CONNECT` | Conexão Oracle |
 | `.env` | `UNIDADE_EMPRESARIAL_ID` | Identifica a loja/unidade no Horus |
 | `.env` | `ORDEM_DIAS` | Dias retroativos na busca de pedidos (`/orders/search`) |
-| `.env` | `PERGUNTAS_DIAS` | Dias retroativos na busca de perguntas (`/my/received_questions/search`) |
+| `PERGUNTAS_DIAS` | Dias retroativos na busca de perguntas (`/my/received_questions/search`) |
+| `.env` | `CATEGORIA` | `S` sincroniza categorias folha; `N` ignora o job |
 | `.env` | `ORACLE_CLIENT_LIB_DIR` | Caminho do Oracle Instant Client (modo Thick) |
 | Banco | `MLCN_CLIENT_ID`, `MLCN_CLIENT_SECRET`, etc. | OAuth Mercado Livre |
 

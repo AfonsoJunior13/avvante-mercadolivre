@@ -27,7 +27,6 @@ select MLA.UNIDADE_EMPRESARIAL_ID,
         MLA.MLAN_MODO_ENVIO,
         upper(MLA.MLAN_ACAO)         MLAN_ACAO,
         MLA.MLAN_GRITS,
-        'Sim'                        MLAN_FRETE_GRATIS,
         MLA.MLAN_ERRO
 
    from MERC_LIVRE_ANUNCIO    MLA,

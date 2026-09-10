@@ -69,7 +69,7 @@ Mercado Livre OAuth 2.0
 | `axios` | HTTP interno em `utils/mlApi.js` (não usar direto nos services) |
 | `oracledb` | Conexão e execução de procedures |
 | `node-cron` | Agendamento em `execJobs.js` |
-| `dotenv` | `.env` (DB + unidade + Oracle Client + `ORDEM_DIAS` + `PERGUNTAS_DIAS`) |
+| `dotenv` | `.env` (DB + unidade + Oracle Client + `ORDEM_DIAS` + `PERGUNTAS_DIAS` + `CATEGORIA`) |
 | `qs` | Body OAuth (`application/x-www-form-urlencoded`) |
 | `winston` | Declarado no `package.json`; **logging efetivo** via `utils/logger.js`, `execLogger.js` e `jsonLogger.js` |
 | `form-data` | Upload multipart das fotos (`POST /pictures/items/upload`) |
@@ -87,6 +87,7 @@ DB_CONNECT=host:1521/servico
 UNIDADE_EMPRESARIAL_ID=
 ORDEM_DIAS=90
 PERGUNTAS_DIAS=30
+CATEGORIA=N
 ORACLE_CLIENT_LIB_DIR=C:\caminho\para\oracle\instant\client
 ```
 
@@ -96,6 +97,7 @@ ORACLE_CLIENT_LIB_DIR=C:\caminho\para\oracle\instant\client
 | `UNIDADE_EMPRESARIAL_ID` | Unidade/loja no Horus (uma por instância) |
 | `ORDEM_DIAS` | Dias retroativos na busca de pedidos (`getOrdensAll.js`) — obrigatório, inteiro positivo (ex.: `90`) |
 | `PERGUNTAS_DIAS` | Dias retroativos na busca de perguntas (`getPerguntasAll.js`) — obrigatório, inteiro positivo (ex.: `30`) |
+| `CATEGORIA` | `S` = sincroniza a árvore de categorias MLB; `N` (ou outro valor) = não executa o job |
 | `ORACLE_CLIENT_LIB_DIR` | Caminho do Oracle Instant Client (modo Thick) |
 
 `ORDEM_DIAS` alimenta `order.date_created.from` / `order.date_created.to` em `GET /orders/search`. A API ML só mantém pedidos por ~12 meses; valores maiores que isso não recuperam histórico além desse limite.
@@ -264,6 +266,7 @@ utils/
 | Endereço de entrega | `src/services/ordem/getEndereco.js` (API `/shipments/{id}`) |
 | SKU/GTIN de produtos | `src/services/produto/produtos.js` (`SELLER_SKU`, `GTIN` nos attributes) |
 | Paginação de anúncios importados | `src/services/produto/getProdutosAll.js` (`limit`/`offset`; `search_type=scan` se `paging.total` > 1000) |
+| Sync categorias folha | `src/services/categoria/getCategorias.js` + `.env` `CATEGORIA` (`S` executa, `N` ignora) |
 | Sync perguntas ML | `src/services/pergunta/perguntas.js` — requer permissão DevCenter *Comunicação pré e pós-venda* |
 | Listagem paginada de perguntas | `src/services/pergunta/getPerguntasAll.js` + `.env` `PERGUNTAS_DIAS` (janela + `date_created DESC`) |
 | Detalhe da pergunta + comprador | `src/services/pergunta/getPergunta.js` |
@@ -523,12 +526,14 @@ Script: `src/oracle/merc_livre_anuncio.tab`.
 | `MLAN_ACAO` | `PUBLICAR`, `ATUALIZAR`, `PAUSAR`, `ATIVAR`, `ENCERRAR`, `EXCLUIR` (view filtra também com inicial maiúscula) |
 | `MLAN_TITULO` / `MLAN_DESCRICAO` | Título (clássico) ou `family_name` (UP); descrição `plain_text` |
 | `MLAN_PRECO` / `MLAN_QTDE` | Preço e estoque do anúncio |
-| `MLAN_CONDICAO` | `new`, `used` ou recondicionado |
+| `MLAN_CONDICAO` | `value_id` de `ITEM_CONDITION` (ex. `2230284` Novo, `2230581` Usado, `2230582` Recondicionado) |
 | `MARCAS_ID` / `MLAN_MODELO` | Marca Horus + modelo |
 | `MLAN_GTIN` / `MLAN_SKU` | EAN/UPC do anúncio e `SELLER_SKU` |
+| `MLAN_GRITS` | Granulometria (`GRITS_NUMBER`, ex. `120`) |
 | `MLAN_GARANTIA_TIPO` / `MLAN_GARANTIA_TEMPO` | `WARRANTY_TYPE` / `WARRANTY_TIME` |
 | `MLAN_ALTURA_CM` / `MLAN_COMPRIMENTO_CM` / `MLAN_LARGURA_CM` / `MLAN_PESO` | Pacote ME2 (cm / gramas) |
 | `MLAN_MODO_ENVIO` | `shipping.mode` (padrão `me2`) |
+| `MLAN_FRETE_GRATIS` | `Sim` = frete grátis; `Nao` = pago |
 | `MLAN_STATUS` | Status no ML (`active`, `paused`, `closed`) — distinto de `STATUS` do registro Horus |
 | `MLAN_PERMALINK` / `MLAN_ERRO` | URL do anúncio e último erro da API |
 | `MLAN_DATA_ENVIO` / `MLAN_DATA_ATUALIZACAO` / `MLAN_DATA_AGENDAMENTO` | Controle da fila |
@@ -593,11 +598,12 @@ Monta o payload a partir de `MERC_LIVRE_ANUNCIO`, resolvendo IDs do ML (categori
 | `MLAN_DESCRICAO` | `MERC_LIVRE_ANUNCIO` | `POST /items/{id}/description` (`plain_text`) — **não** entra no POST do item |
 | `MLAN_PRECO` | `MERC_LIVRE_ANUNCIO` | `price` |
 | `MLAN_QTDE` | `MERC_LIVRE_ANUNCIO` | `available_quantity` |
-| `MLAN_CONDICAO` | `MERC_LIVRE_ANUNCIO` | `ITEM_CONDITION` / `condition` |
+| `MLAN_CONDICAO` | `MERC_LIVRE_ANUNCIO` | `ITEM_CONDITION.value_id` (ex. `2230284`) |
 | `MLTA_MARCA_DESCRICAO` | `MARCAS.MARC_DESCRICAO` | atributo `BRAND` |
 | `MLAN_MODELO` | `MERC_LIVRE_ANUNCIO` | atributo `MODEL` |
 | `MLAN_GTIN` | `MERC_LIVRE_ANUNCIO` | atributo `GTIN` |
 | `MLAN_SKU` | `MERC_LIVRE_ANUNCIO` | atributo `SELLER_SKU` |
+| `MLAN_GRITS` | `MERC_LIVRE_ANUNCIO` | atributo `GRITS_NUMBER` (granulometria) |
 | `MLAN_GARANTIA_TIPO` | `MERC_LIVRE_ANUNCIO` | `sale_terms` `WARRANTY_TYPE` |
 | `MLAN_GARANTIA_TEMPO` | `MERC_LIVRE_ANUNCIO` | `sale_terms` `WARRANTY_TIME` |
 | `MLAN_ALTURA_CM` | `MERC_LIVRE_ANUNCIO` | `SELLER_PACKAGE_HEIGHT` |
@@ -605,6 +611,7 @@ Monta o payload a partir de `MERC_LIVRE_ANUNCIO`, resolvendo IDs do ML (categori
 | `MLAN_LARGURA_CM` | `MERC_LIVRE_ANUNCIO` | `SELLER_PACKAGE_WIDTH` |
 | `MLAN_PESO` | `MERC_LIVRE_ANUNCIO` | `SELLER_PACKAGE_WEIGHT` (gramas) |
 | `MLAN_MODO_ENVIO` | `MERC_LIVRE_ANUNCIO` | `shipping.mode` (padrão `me2`) |
+| `MLAN_FRETE_GRATIS` | `MERC_LIVRE_ANUNCIO` | `shipping.free_shipping` (`Sim` = true, `Nao` = false) |
 | `MLAN_ACAO` | `upper(MLAN_ACAO)` | Roteia o endpoint: `PUBLICAR`, `ATUALIZAR`, `PAUSAR`, `ATIVAR`, `ENCERRAR`, `EXCLUIR` |
 
 #### `VIEW_MLAPI_ANUNCIO_IMAGEM`
@@ -644,7 +651,7 @@ Capa: ordenar `PRINCIPAL = Sim` primeiro. Não usar a ordem do `UNION` como regr
    - `ATUALIZAR` — fotos + `PUT /items/{id}` + descrição
    - `PAUSAR` / `ATIVAR` / `ENCERRAR` — `PUT` com `status`
    - `EXCLUIR` — `closed` e depois `deleted: true`
-4. Procedure `PRC_MLAPI_AUNCIOS_ENV` (`P_MERC_LIVRE_ANUNCIO_ID`, `P_MLAN_ID`): grava `MLAN_ID`, `MLAN_DATA_ENVIO = SYSDATE`, zera `MLAN_ACAO`.
+4. Procedure `PRC_MLAPI_AUNCIOS_ENV` (`P_MERC_LIVRE_ANUNCIO_ID`, `P_MLAN_ID`, `P_MLAN_ERRO`): sucesso grava `MLAN_ID`, `MLAN_DATA_ENVIO`, zera `MLAN_ACAO` e `MLAN_ERRO`; falha grava só `MLAN_ERRO` (ação permanece para reprocessar).
 
 Erro em um anúncio não interrompe o lote. Falha na descrição após o POST do item **não** impede gravar o `MLAN_ID` (evita republicar duplicado).
 
@@ -1038,13 +1045,17 @@ DDL e views no Oracle para a fila Horus → ML.
 | `src/repositories/anuncioRepository.js` | Views + `PRC_MLAPI_AUNCIOS_ENV` |
 | `src/jobs/execJobs.js` | Job `anunciosSave` em `Iniciar()`; cron planejado `*/5 * * * *` (comentado) |
 
-**Oracle:** `PRC_MLAPI_AUNCIOS_ENV` (`P_MERC_LIVRE_ANUNCIO_ID`, `P_MLAN_ID`).
+**Oracle:** `PRC_MLAPI_AUNCIOS_ENV` (`P_MERC_LIVRE_ANUNCIO_ID`, `P_MLAN_ID`, `P_MLAN_ERRO`).
 
 ### Alterações set/2026 — paginação do pull de anúncios (`getProdutosAll`)
 
 `GET /users/{user_id}/items/search` passou a percorrer todas as páginas (`limit=50` + `offset`). Se `paging.total` > 1000, usa `search_type=scan` + `scroll_id` (limite da API com offset).
 
-Última atualização deste arquivo: 08/set/2026.
+### Alterações set/2026 — sync de categorias folha
+
+`getCategorias.js` desce a árvore (`GET /sites/MLB/categories` + `GET /categories/{id}`) e grava em `MERC_LIVRE_CATEGORIA` só folhas com `listing_allowed` e `buying_modes` contendo `buy_it_now`. `MLCA_NAME` = caminho `path_from_root`. Detalhes da árvore não geram log JSON (`skipJsonLog`).
+
+Última atualização deste arquivo: 10/set/2026.
 
 ---
 

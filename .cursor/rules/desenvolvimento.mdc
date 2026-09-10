@@ -69,7 +69,7 @@ Credenciais OAuth ficam em `MERC_LIVRE_CONFIG` (Oracle), não no `.env`.
 
 ## Configuração e segurança
 
-- `.env`: `DB_USER`, `DB_PASSWORD`, `DB_CONNECT`, `UNIDADE_EMPRESARIAL_ID`, `ORDEM_DIAS` (dias retroativos na busca de pedidos), `PERGUNTAS_DIAS` (dias retroativos na busca de perguntas).
+- `.env`: `DB_USER`, `DB_PASSWORD`, `DB_CONNECT`, `UNIDADE_EMPRESARIAL_ID`, `ORDEM_DIAS` (dias retroativos na busca de pedidos), `PERGUNTAS_DIAS` (dias retroativos na busca de perguntas), `CATEGORIA` (`S` sincroniza categorias, `N` não).
 - **Nunca** commitar `.env`, `src/error.log` ou credenciais.
 - OAuth: seguir `.cursor/docs/OAUTH-TOKEN.md` (body no POST, Bearer no header, `redirect_uri` estática).
 - Site fixo: **MLB** (Brasil) — `sites/MLB/...`.

@@ -9,7 +9,7 @@ async function categoriaUpdate(data) {
   const connection = await getConnection();
 
   try {
-    logJsonEnv('categoriaUpdate', data);
+    logJsonEnv('categoriaUpdate', { total: data.length });
 
     for (const item of data) {
         const binds = {

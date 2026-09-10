@@ -55,6 +55,7 @@ function mapearAnuncio(row) {
     modelo: row.MLAN_MODELO,
     gtin: row.MLAN_GTIN,
     sku: row.MLAN_SKU,
+    grits: row.MLAN_GRITS,
     garantia_tipo: row.MLAN_GARANTIA_TIPO,
     garantia_tempo: row.MLAN_GARANTIA_TEMPO,
     altura_cm: row.MLAN_ALTURA_CM,
@@ -62,6 +63,7 @@ function mapearAnuncio(row) {
     largura_cm: row.MLAN_LARGURA_CM,
     peso: row.MLAN_PESO,
     modo_envio: row.MLAN_MODO_ENVIO,
+    frete_gratis: row.MLAN_FRETE_GRATIS,
     acao: row.MLAN_ACAO,
   };
 }
@@ -89,6 +91,7 @@ async function getAnunciosPendentes() {
               V.MLAN_MODELO,
               V.MLAN_GTIN,
               V.MLAN_SKU,
+              V.MLAN_GRITS,
               V.MLAN_GARANTIA_TIPO,
               V.MLAN_GARANTIA_TEMPO,
               V.MLAN_ALTURA_CM,
@@ -96,6 +99,7 @@ async function getAnunciosPendentes() {
               V.MLAN_LARGURA_CM,
               V.MLAN_PESO,
               V.MLAN_MODO_ENVIO,
+              V.MLAN_FRETE_GRATIS,
               V.MLAN_ACAO
          from VIEW_MLAPI_ANUNCIO V
         where V.UNIDADE_EMPRESARIAL_ID = :UNIDADE_EMPRESARIAL_ID`,
@@ -182,20 +186,22 @@ async function anuncioEnvioUpdate(data) {
   try {
     const binds = {
       P_MERC_LIVRE_ANUNCIO_ID: data.merc_livre_anuncio_id,
-      P_MLAN_ID: data.mlan_id,
+      P_MLAN_ID: data.mlan_id || null,
+      P_MLAN_ERRO: data.mlan_erro || null,
     };
 
     logJsonEnv('anuncioEnvioUpdate', binds);
 
     await connection.execute(
-      `BEGIN PRC_MLAPI_AUNCIOS_ENV(:P_MERC_LIVRE_ANUNCIO_ID, :P_MLAN_ID); END;`,
+      `BEGIN PRC_MLAPI_AUNCIOS_ENV(:P_MERC_LIVRE_ANUNCIO_ID, :P_MLAN_ID, :P_MLAN_ERRO); END;`,
       binds
     );
 
     logJsonRec('anuncioEnvioUpdate', {
       success: true,
       merc_livre_anuncio_id: data.merc_livre_anuncio_id,
-      mlan_id: data.mlan_id,
+      mlan_id: data.mlan_id || null,
+      mlan_erro: data.mlan_erro || null,
     });
 
     return { success: true };

@@ -340,12 +340,12 @@ Ou, quando a lista for fechada, preferir `value_id` oficial.
 
 | `id` | Obrig. | Significado | Origem Horus típica |
 |------|--------|-------------|---------------------|
-| `ITEM_CONDITION` | Obrig. (código novo) | Novo / usado / recondicionado | Cadastro |
+| `ITEM_CONDITION` | Obrig. (código novo) | Novo / usado / recondicionado | `MLAN_CONDICAO` (`value_id`, ex. `2230284`) |
 | `BRAND` | Quase sempre `required` | Marca | Cadastro produto |
 | `MODEL` | Frequente | Modelo | Cadastro |
 | `GTIN` | `required` ou `conditional_required` | EAN/UPC/ISBN (8–14 dígitos). Vários códigos: separados por vírgula. **Não é SKU interno.** | `EMBALAGEM_VENDA.EMBV_COD_BARRA` |
 | `EMPTY_GTIN_REASON` | Condicional | Só se **não** houver GTIN: `Artesanal`, `Kit`, `No registrado`, `Otro` | Cadastro |
-| `SELLER_SKU` | Recomendado | SKU interno do vendedor (rastreio no pedido). **Não** usar `seller_custom_field`. | Código da embalagem |
+| `GRITS_NUMBER` | Condicional (lixas) | Granulometria (cascalhos) | `MLAN_GRITS` |
 | `SELLER_PACKAGE_HEIGHT` | Condicional (ME2) | Altura do pacote, **cm** | Embalagem |
 | `SELLER_PACKAGE_LENGTH` | Condicional (ME2) | Comprimento, **cm** | Embalagem |
 | `SELLER_PACKAGE_WIDTH` | Condicional (ME2) | Largura, **cm** | Embalagem |
@@ -451,7 +451,7 @@ Modelo **clássico** (conta ainda sem `user_product_seller`):
     "free_shipping": false
   },
   "attributes": [
-    { "id": "ITEM_CONDITION", "value_name": "Novo" },
+    { "id": "ITEM_CONDITION", "value_id": "2230284" },
     { "id": "BRAND", "value_name": "Bosch" },
     { "id": "MODEL", "value_name": "GSB 550" },
     { "id": "GTIN", "value_name": "7891234567890" },
@@ -483,7 +483,7 @@ Modelo **User Products** (mesmo produto): trocar `title` por `family_name` e **o
   ],
   "shipping": { "mode": "me2", "local_pick_up": false, "free_shipping": false },
   "attributes": [
-    { "id": "ITEM_CONDITION", "value_name": "Novo" },
+    { "id": "ITEM_CONDITION", "value_id": "2230284" },
     { "id": "BRAND", "value_name": "Bosch" },
     { "id": "MODEL", "value_name": "GSB 550" },
     { "id": "GTIN", "value_name": "7891234567890" },
@@ -628,12 +628,14 @@ Não traz embalagens. Filtrar `UNIDADE_EMPRESARIAL_ID` no Node.
 | `MLAN_TITULO` | `title` ou `family_name` |
 | `MLAN_DESCRICAO` | `POST /items/{id}/description` (depois do item) |
 | `MLAN_PRECO` / `MLAN_QTDE` | `price` / `available_quantity` |
-| `MLAN_CONDICAO` | `ITEM_CONDITION` |
+| `MLAN_CONDICAO` | `ITEM_CONDITION.value_id` (sem tradução; ex. `2230284` Novo) |
 | `MLTA_MARCA_DESCRICAO` | `BRAND` |
 | `MLAN_MODELO` / `MLAN_GTIN` / `MLAN_SKU` | `MODEL` / `GTIN` / `SELLER_SKU` |
+| `MLAN_GRITS` | `GRITS_NUMBER` |
 | `MLAN_GARANTIA_TIPO` / `MLAN_GARANTIA_TEMPO` | `sale_terms` |
 | `MLAN_ALTURA_CM` … `MLAN_PESO` | atributos de pacote ME2 |
 | `MLAN_MODO_ENVIO` | `shipping.mode` |
+| `MLAN_FRETE_GRATIS` | `shipping.free_shipping` (`Sim` / `Nao`) |
 | `MLAN_ID` | `item_id` (nulo = publicar; preenchido = atualizar/pausar/…) |
 | `MLAN_ACAO` | qual chamada HTTP fazer |
 | `MERC_LIVRE_ANUNCIO_ID` | cruzar com a view de imagens |

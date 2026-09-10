@@ -12,6 +12,10 @@ const anuncios = require('../services/anuncio/anuncios');
 
 require('dotenv').config();
 
+function categoriaHabilitada() {
+  return String(process.env.CATEGORIA || '').trim().toUpperCase() === 'S';
+}
+
 async function refreshToken() {
   console.log('*** Token ***');
   try {    
@@ -33,6 +37,11 @@ async function tpAnuncioSave() {
 }
 
 async function categoriasSave() {
+  if (!categoriaHabilitada()) {
+    console.log('*** Categoria *** (ignorado — CATEGORIA diferente de S)');
+    return;
+  }
+
   console.log('*** Categoria ***');
   try {    
     await categorias.categoriasAtualizar();        
