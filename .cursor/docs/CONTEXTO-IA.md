@@ -28,7 +28,7 @@ Serviço **Node.js worker** (sem API HTTP) que sincroniza periodicamente dados d
 
 **É:**
 - Integração batch pull (polling) ML → Horus (produtos, pedidos, categorias, tipos de anúncio, **perguntas**, **pagamento/repasse ML**)
-- Envio batch Horus → ML da **NF-e de venda** e da **fila de anúncios** (`VIEW_MLAPI_ANUNCIO`)
+- Envio batch Horus → ML da **NF-e de venda**, da **fila de anúncios** (`VIEW_MLAPI_ANUNCIO`) e do **estoque** (`VIEW_MLAPI_ESTOQUE`)
 - Processo de longa duração com `node-cron`
 - Ponte entre axios (API REST) e oracledb (procedures PL/SQL)
 
@@ -216,8 +216,9 @@ Arquivo: `src/jobs/execJobs.js`
 | `ordemNfeSave` | (não definido) | **sem cron** | `services/ordem/ordemNfe.js` |
 | `perguntasSave` | `*/5 * * * *` | **comentado** | `services/pergunta/perguntas.js` |
 | `anunciosSave` | `*/5 * * * *` | **comentado** | `services/anuncio/anuncios.js` |
+| `estoqueSave` | `*/5 * * * *` | **comentado** | `services/estoque/estoques.js` |
 
-**Estado atual:** na subida, `Iniciar()` executa **todos** os jobs **uma vez** em sequência (`token → tpAnuncio → categoria → anuncio → produto → ordem → ordemPagto → ordemNfe → pergunta`). Os `cron.schedule` estão **todos comentados** — o processo fica ocioso após a primeira rodada até ser reiniciado ou até alguém descomentar os crons.
+**Estado atual:** na subida, `Iniciar()` executa **todos** os jobs **uma vez** em sequência (`token → tpAnuncio → categoria → anuncio → produto → estoque → ordem → ordemPagto → ordemNfe → pergunta`). Os `cron.schedule` estão **todos comentados** — o processo fica ocioso após a primeira rodada até ser reiniciado ou até alguém descomentar os crons.
 
 Para novo job: criar função async + `cron.schedule` + exportar lógica no service correspondente + incluir chamada em `Iniciar()`.
 
@@ -234,12 +235,13 @@ services/
   pergunta/    perguntas.js, getPerguntasAll.js, getPergunta.js
   anuncio/     anuncios.js, montarPayload.js, getVendedor.js, postAnuncio.js,
                putAnuncio.js, postDescricao.js, postImagem.js
+  estoque/     estoques.js, putEstoque.js
 
 repositories/
   configRepository.js, produtoRepository.js, ordemRepository.js,
   ordemItemRepository.js, ordemEndRepository.js, ordemPagtoRepository.js,
   ordemNfeRepository.js, perguntaRepository.js, categoriaRepository.js,
-  tpAnuncioRepository.js, anuncioRepository.js
+  tpAnuncioRepository.js, anuncioRepository.js, estoqueRepository.js
 
 utils/
   mlApi.js, jsonLogger.js, execLogger.js, logger.js, oracleErrorHandler.js
@@ -287,6 +289,7 @@ utils/
 | Payload de publicação (view) | `VIEW_MLAPI_ANUNCIO` (`src/oracle/view_mlapi_anuncio.sql`) |
 | Guia API de publicação | `.cursor/docs/PUBLICACAO-ANUNCIOS.md` |
 | Envio de anúncios Horus → ML | `src/services/anuncio/anuncios.js` — job `anunciosSave` |
+| Envio de estoque Horus → ML | `src/services/estoque/estoques.js` — job `estoqueSave` (`VIEW_MLAPI_ESTOQUE`) |
 | Payload do anúncio | `src/services/anuncio/montarPayload.js` |
 | Upload de fotos (LONG RAW) | `src/services/anuncio/postImagem.js` + `getAnuncioImagens()` |
 | Gravação retorno ML | `anuncioRepository.anuncioEnvioUpdate()` → `PRC_MLAPI_AUNCIOS_ENV` |
@@ -657,6 +660,31 @@ Erro em um anúncio não interrompe o lote. Falha na descrição após o POST do
 
 ---
 
+## Domínio: Envio de estoque (Horus → ML)
+
+Rotina **separada** da publicação de anúncios. Envia só a quantidade disponível dos produtos já existentes no ML (`MERC_LIVRE_PRODUTO.MLPD_ID`).
+
+### View `VIEW_MLAPI_ESTOQUE`
+
+Script: `src/oracle/view_mlapi_estoque.sql`. Calcula o saldo Horus (estoque − reservas − quantidade mínima) por anúncio ML, nos setores com `SETR_MERC_LIVRE = 'Sim'`.
+
+| Coluna | Uso |
+|--------|-----|
+| `UNIDADE_EMPRESARIAL_ID` | Filtro do `.env` |
+| `MERC_LIVRE_PRODUTO_ID` | PK Horus (log) |
+| `MLPD_ID` | `item_id` ML — URL `PUT /items/{MLPD_ID}` |
+| `QTDE` | Body `available_quantity` (inteiro ≥ 0; negativo/nulo vira `0`) |
+
+### Fluxo (`estoques.js`)
+
+1. `getEstoques()` — SELECT em `VIEW_MLAPI_ESTOQUE` com `UNIDADE_EMPRESARIAL_ID` e `MLPD_ID` não nulo.
+2. Por item → `PUT /items/{MLPD_ID}` `{ "available_quantity": QTDE }`.
+3. Erro em um item não interrompe o lote (`try/catch` + `logger.logError`). Sem procedure de retorno — a view é o saldo atual a cada execução.
+
+Job: `estoqueSave` em `execJobs.js` (cron planejado `*/5 * * * *`, comentado).
+
+---
+
 ## Objetos Oracle — contrato Node ↔ Horus
 
 ### Tabelas principais (schema `HORUS`)
@@ -720,6 +748,7 @@ Scripts: `src/oracle/merc_livre_pergunta.tab`, `src/oracle/prc_mlapi_pergunta_up
 | `getOrdensNfePendente` | `ordemNfeRepository.js` | `VIEW_MLOR_NFE` |
 | `getAnunciosPendentes` | `anuncioRepository.js` | `VIEW_MLAPI_ANUNCIO` |
 | `getAnuncioImagens` | `anuncioRepository.js` | `VIEW_MLAPI_ANUNCIO_IMAGEM` (`FOPR_FOTO` LONG RAW → Buffer) |
+| `getEstoques` | `estoqueRepository.js` | `VIEW_MLAPI_ESTOQUE` |
 
 ### Views Oracle (somente leitura via Node)
 
@@ -729,6 +758,7 @@ Scripts: `src/oracle/merc_livre_pergunta.tab`, `src/oracle/prc_mlapi_pergunta_up
 | `VIEW_MLOR_NFE` | NF-e pendente de envio ao ML (`getOrdensNfePendente`) |
 | `VIEW_MLAPI_ANUNCIO` | Envio de anúncios ao ML (`getAnunciosPendentes`) |
 | `VIEW_MLAPI_ANUNCIO_IMAGEM` | Imagens do anúncio — LONG RAW `FOPR_FOTO` + `PRINCIPAL` (`getAnuncioImagens`) |
+| `VIEW_MLAPI_ESTOQUE` | Envio de estoque ao ML (`getEstoques`) |
 
 ### Procedures Oracle **não** integradas ao Node
 
@@ -786,6 +816,7 @@ Endpoints adicionais (publicação de anúncios):
 - `POST /items/validate` — validar payload (HTTP 204)
 - `POST /items` — criar anúncio
 - `PUT /items/{id}` — atualizar / pausar / ativar / encerrar / excluir
+- `PUT /items/{id}` `{ "available_quantity" }` — **somente estoque** (`putEstoque.js`)
 - `POST /items/{id}/description` — descrição após criar
 - `PUT /items/{id}/description?api_version=2` — atualizar descrição
 
@@ -835,6 +866,7 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 | `ordemPagto.js` | `try/catch` por ordem; log + continua próxima ordem |
 | `ordemNfe.js` | `try/catch` por ordem; log + continua próxima ordem; não grava data em falha |
 | `anuncios.js` | `try/catch` por anúncio; log + continua próximo; descrição falha não impede gravar `MLAN_ID` |
+| `estoques.js` | `try/catch` por item; log + continua próximo |
 | `getOrdemPagto.js` | Falha API → retorna status `Aberto` e valor `0` |
 | `getDadosFaturamento.js` | Falha API → retorna `{}` e continua |
 | `getEndereco.js` | Falha API → retorna `{}` e continua |
@@ -1047,6 +1079,19 @@ DDL e views no Oracle para a fila Horus → ML.
 
 **Oracle:** `PRC_MLAPI_AUNCIOS_ENV` (`P_MERC_LIVRE_ANUNCIO_ID`, `P_MLAN_ID`, `P_MLAN_ERRO`).
 
+### Alterações set/2026 — envio de estoque Horus → ML
+
+**Código Node:**
+
+| Arquivo | Função |
+|---------|--------|
+| `src/services/estoque/estoques.js` | Orquestrador batch (`VIEW_MLAPI_ESTOQUE`) |
+| `src/services/estoque/putEstoque.js` | `PUT /items/{id}` só com `available_quantity` |
+| `src/repositories/estoqueRepository.js` | SELECT `VIEW_MLAPI_ESTOQUE` filtrado por unidade |
+| `src/jobs/execJobs.js` | Job `estoqueSave` em `Iniciar()`; cron planejado `*/5 * * * *` (comentado) |
+
+**Oracle:** `VIEW_MLAPI_ESTOQUE` (`src/oracle/view_mlapi_estoque.sql`) — `MLPD_ID` + `QTDE`. Sem procedure de gravação.
+
 ### Alterações set/2026 — paginação do pull de anúncios (`getProdutosAll`)
 
 `GET /users/{user_id}/items/search` passou a percorrer todas as páginas (`limit=50` + `offset`). Se `paging.total` > 1000, usa `search_type=scan` + `scroll_id` (limite da API com offset).
@@ -1055,7 +1100,7 @@ DDL e views no Oracle para a fila Horus → ML.
 
 `getCategorias.js` desce a árvore (`GET /sites/MLB/categories` + `GET /categories/{id}`) e grava em `MERC_LIVRE_CATEGORIA` só folhas com `listing_allowed` e `buying_modes` contendo `buy_it_now`. `MLCA_NAME` = caminho `path_from_root`. Detalhes da árvore não geram log JSON (`skipJsonLog`).
 
-Última atualização deste arquivo: 10/set/2026.
+Última atualização deste arquivo: 16/set/2026.
 
 ---
 

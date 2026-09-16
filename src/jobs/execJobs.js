@@ -9,6 +9,7 @@ const ordemPagto = require('../services/ordem/ordemPagto');
 const ordemNfe = require('../services/ordem/ordemNfe');
 const perguntas = require('../services/pergunta/perguntas');
 const anuncios = require('../services/anuncio/anuncios');
+const estoques = require('../services/estoque/estoques');
 
 require('dotenv').config();
 
@@ -111,6 +112,16 @@ async function anunciosSave() {
   }
 }
 
+async function estoqueSave() {
+  console.log('*** Estoque ML ***');
+  try {
+    await estoques.estoquesEnviar();
+  } catch (error) {
+    console.error('Erro Estoque ML: ', error);
+    await logger.logError(error);
+  }
+}
+
 async function Iniciar() {
   console.log(`<< INICIO ${new Date().toLocaleString()} >>`);
   await refreshToken();
@@ -118,6 +129,7 @@ async function Iniciar() {
   await categoriasSave();
   await anunciosSave();
   await produtosSave();
+  await estoqueSave();
   await ordensSave();
   await ordemPagtoSave();
   await ordemNfeSave();
@@ -138,3 +150,4 @@ Iniciar();
 //cron.schedule('*/5 * * * *', ordemNfeSave); // 5 minutos
 //cron.schedule('*/5 * * * *', ordemPagtoSave); // 5 minutos
 //cron.schedule('*/5 * * * *', anunciosSave); // 5 minutos
+//cron.schedule('*/5 * * * *', estoqueSave); // 5 minutos

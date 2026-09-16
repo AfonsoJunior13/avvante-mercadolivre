@@ -13,6 +13,8 @@ A integração cobre os fluxos principais de operação no Mercado Livre:
 | **Categorias** | Importa a árvore de categorias MLB e grava as **folhas** publicáveis (`buy_it_now`) |
 | **Produtos** | Sincroniza anúncios do vendedor (título, preço, estoque, SKU, GTIN, categoria, etc.) |
 | **Pedidos** | Importa pedidos pagos e aprovados, incluindo dados de faturamento, endereço de entrega e itens |
+| **Anúncios** | Envia fila Horus → ML (`VIEW_MLAPI_ANUNCIO`) |
+| **Estoque** | Envia quantidade disponível Horus → ML (`VIEW_MLAPI_ESTOQUE`) |
 
 Os dados ficam disponíveis no Horus para processos internos como faturamento, expedição e controle de estoque.
 
@@ -108,6 +110,7 @@ Ao iniciar, o serviço executa **todos os jobs imediatamente** e depois mantém 
 | Pedidos | A cada 5 minutos | Importa pedidos pagos e aprovados |
 | Perguntas | A cada 5 minutos | Sincroniza perguntas recebidas nos anúncios |
 | Anúncios | A cada 5 minutos | Envia fila Horus → ML (`VIEW_MLAPI_ANUNCIO`) |
+| Estoque | A cada 5 minutos | Envia estoque Horus → ML (`VIEW_MLAPI_ESTOQUE`) |
 
 ## Objetos Oracle
 
@@ -124,6 +127,7 @@ Scripts DDL e procedures ficam em `src/oracle/`:
 | `MERC_LIVRE_TP_ANUNCIO` | Tipos de listagem |
 | `MERC_LIVRE_PERGUNTA` | Perguntas recebidas nos anúncios |
 | `MERC_LIVRE_ANUNCIO` | Fila de publicação Horus → ML |
+| `VIEW_MLAPI_ESTOQUE` | Saldo Horus para envio ao ML |
 | `PRC_MLAPI_*` | Procedures de insert/update chamadas pelos repositories |
 
 ## Endpoints da API utilizados
@@ -143,6 +147,7 @@ Scripts DDL e procedures ficam em `src/oracle/`:
 - `POST /items/validate` — valida payload sem publicar
 - `POST /items` — cria anúncio
 - `PUT /items/{id}` — atualiza / pausa / ativa / encerra / exclui
+- `PUT /items/{id}` `{ "available_quantity" }` — atualiza somente estoque
 - `POST /items/{id}/description` — descrição do anúncio
 
 ## Docker (Oracle local para desenvolvimento)

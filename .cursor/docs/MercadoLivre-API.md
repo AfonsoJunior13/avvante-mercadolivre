@@ -258,6 +258,7 @@ Causas: token expirado, já usado, revogado, `redirect_uri` divergente, troca de
 | Tipos de anúncio | GET | `/sites/MLB/listing_types` | `getTpAnuncios.js` |
 | Listar perguntas recebidas | GET | `/my/received_questions/search?api_version=4` | `getPerguntasAll.js` |
 | Detalhe pergunta | GET | `/questions/{id}?api_version=4` | `getPergunta.js` |
+| Atualizar estoque | PUT | `/items/{id}` (`available_quantity`) | `putEstoque.js` |
 
 ### Paginação de anúncios no projeto
 

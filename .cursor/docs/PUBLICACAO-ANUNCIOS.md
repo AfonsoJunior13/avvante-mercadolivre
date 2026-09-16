@@ -508,6 +508,7 @@ Resposta de sucesso do POST `/items` traz no mínimo: `id` (ex. `MLB123…`), `p
 | Ação | Endpoint |
 |------|----------|
 | Preço / estoque / fotos / atributos | `PUT /items/{ITEM_ID}` |
+| **Somente estoque** (job `estoqueSave`) | `PUT /items/{ITEM_ID}` `{ "available_quantity": N }` — fila `VIEW_MLAPI_ESTOQUE` (`MLPD_ID` + `QTDE`) |
 | Preço (modelo novo) | API Prices |
 | Descrição | `PUT /items/{ITEM_ID}/description?api_version=2` |
 | Tipo de anúncio | `POST /items/{ITEM_ID}/listing_type` |

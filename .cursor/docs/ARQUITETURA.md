@@ -189,6 +189,14 @@ VIEW_MLAPI_ANUNCIO → anuncios.js → (fotos VIEW_MLAPI_ANUNCIO_IMAGEM → POST
 
 Fila por `MLAN_ACAO` (`PUBLICAR`, `ATUALIZAR`, `PAUSAR`, `ATIVAR`, `ENCERRAR`, `EXCLUIR`). `FOPR_FOTO` é LONG RAW; `PRINCIPAL = Sim` é a capa. Erro em um anúncio não interrompe o lote.
 
+### Envio de estoque (Horus → ML)
+
+```
+VIEW_MLAPI_ESTOQUE → estoques.js → PUT /items/{MLPD_ID} { available_quantity: QTDE }
+```
+
+Saldo calculado no Horus (estoque − reservas − mínimo). Filtro `UNIDADE_EMPRESARIAL_ID` do `.env`. Erro em um item não interrompe o lote. Sem procedure de retorno.
+
 ## Camada de persistência (Oracle)
 
 ### Tabelas principais
@@ -213,6 +221,7 @@ Fila por `MLAN_ACAO` (`PUBLICAR`, `ATUALIZAR`, `PAUSAR`, `ATIVAR`, `ENCERRAR`, `
 | `VIEW_MERC_LIVRE_PRODUTO` | Consulta de produtos no Horus |
 | `VIEW_MLAPI_ANUNCIO` | Envio Horus → ML: dados do anúncio (`getAnunciosPendentes`) |
 | `VIEW_MLAPI_ANUNCIO_IMAGEM` | Envio Horus → ML: imagens LONG RAW `FOPR_FOTO` + `PRINCIPAL` (`getAnuncioImagens`) |
+| `VIEW_MLAPI_ESTOQUE` | Envio Horus → ML: estoque (`MLPD_ID` + `QTDE`) (`getEstoques`) |
 
 ### Procedures (contrato Node ↔ Oracle)
 
@@ -241,6 +250,7 @@ Erros de negócio Oracle (`ORA-20000`) são interpretados por `utils/oracleError
 | `ordensSave` | `*/5 * * * *` | 5 minutos |
 | `perguntasSave` | `*/5 * * * *` | 5 minutos |
 | `anunciosSave` | `*/5 * * * *` | 5 minutos |
+| `estoqueSave` | `*/5 * * * *` | 5 minutos |
 
 Na subida, `Iniciar()` executa **todos** os jobs em sequência antes de registrar os crons.
 
@@ -363,7 +373,7 @@ src/
 │   │   ├── perguntas.js            # Loop + try/catch por pergunta
 │   │   ├── getPerguntasAll.js
 │   │   └── getPergunta.js
-│   └── anuncio/
+│   ├── anuncio/
 │       ├── anuncios.js             # Orquestrador Horus → ML
 │       ├── montarPayload.js
 │       ├── getVendedor.js
@@ -371,6 +381,9 @@ src/
 │       ├── putAnuncio.js
 │       ├── postDescricao.js
 │       └── postImagem.js
+│   └── estoque/
+│       ├── estoques.js             # Orquestrador Horus → ML (só quantidade)
+│       └── putEstoque.js           # PUT /items/{id} available_quantity
 ├── repositories/                   # Procedures + logJsonEnv/logJsonRec
 │   ├── configRepository.js
 │   ├── produtoRepository.js
@@ -380,7 +393,8 @@ src/
 │   ├── perguntaRepository.js
 │   ├── categoriaRepository.js
 │   ├── tpAnuncioRepository.js
-│   └── anuncioRepository.js
+│   ├── anuncioRepository.js
+│   └── estoqueRepository.js
 ├── utils/
 │   ├── execLogger.js               # Console → logs/exec + logs/error
 │   ├── logger.js                   # logError → logs/error
