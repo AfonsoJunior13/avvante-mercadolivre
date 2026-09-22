@@ -1,4 +1,4 @@
-create or replace procedure desenv.PRC_MLAPI_ORDEM_UPDATE
+create or replace procedure PRC_MLAPI_ORDEM_UPDATE
 (
   P_UNIDADE_EMPRESARIAL_ID in  MERC_LIVRE_ORDEM.UNIDADE_EMPRESARIAL_ID %type,
   P_MLOR_ORDER_ID          in  MERC_LIVRE_ORDEM.MLOR_ORDER_ID          %type,
@@ -17,8 +17,11 @@ create or replace procedure desenv.PRC_MLAPI_ORDEM_UPDATE
   P_MLOR_NOME              in  MERC_LIVRE_ORDEM.MLOR_NOME              %type,
   P_MLOR_VLR_FRETE         in  MERC_LIVRE_ORDEM.MLOR_VLR_FRETE         %type,
   P_MLOR_VLR_TAXA_ML       in  MERC_LIVRE_ORDEM.MLOR_VLR_TAXA_ML       %type,
-  P_MLOR_DESCONTO          in  MERC_LIVRE_ORDEM.MLOR_DESCONTO          %type,
-
+  P_MLOR_DESCONTO          in  MERC_LIVRE_ORDEM.MLOR_DESCONTO          %type,  
+  P_MLOR_VENDA_ID          in  MERC_LIVRE_ORDEM.MLOR_VENDA_ID          %type,
+  P_MLOR_PAGTO_ID          in  MERC_LIVRE_ORDEM.MLOR_PAGTO_ID          %type,
+  P_MLOR_RECEBE            in  MERC_LIVRE_ORDEM.MLOR_RECEBE            %type,
+  
   P_TRANSACTION            in  number
 
 ) is
@@ -58,7 +61,8 @@ begin
                                   MLOR_UF                ,MLOR_CEP          ,
                                   MLOR_CPF_CNPJ          ,MLOR_NOME         ,
                                   MLOR_VLR_FRETE         ,MLOR_VLR_TAXA_ML  ,
-                                  MLOR_DESCONTO          ,
+                                  MLOR_DESCONTO          ,MLOR_VENDA_ID     ,
+                                  MLOR_PAGTO_ID          ,MLOR_RECEBE       ,
                                   USUARIO_INCLUSAO       ,DATA_INCLUSAO     ,
                                   STATUS                 )
 
@@ -71,7 +75,8 @@ begin
                                   P_MLOR_UF                ,P_MLOR_CEP          ,
                                   P_MLOR_CPF_CNPJ          ,P_MLOR_NOME         ,
                                   P_MLOR_VLR_FRETE         ,P_MLOR_VLR_TAXA_ML  ,
-                                  P_MLOR_DESCONTO          ,
+                                  P_MLOR_DESCONTO          ,P_MLOR_VENDA_ID     ,
+                                  P_MLOR_PAGTO_ID          ,P_MLOR_RECEBE       ,
                                   'UserSystem'             ,sysdate             ,
                                   'Ativo'                  );
    else
@@ -92,6 +97,9 @@ begin
             MLOR_VLR_FRETE    = P_MLOR_VLR_FRETE,
             MLOR_VLR_TAXA_ML  = P_MLOR_VLR_TAXA_ML,
             MLOR_DESCONTO     = P_MLOR_DESCONTO,
+            MLOR_VENDA_ID     = P_MLOR_VENDA_ID,
+            MLOR_PAGTO_ID     = P_MLOR_PAGTO_ID,
+            MLOR_RECEBE       = P_MLOR_RECEBE,
             DATA_ALTERACAO    = sysdate,
             USUARIO_ALTERACAO = 'UserSystem'
       where MERC_LIVRE_ORDEM_ID = V_MERC_LIVRE_ORDEM_ID;
@@ -103,4 +111,3 @@ begin
 
 end PRC_MLAPI_ORDEM_UPDATE;
 /
-

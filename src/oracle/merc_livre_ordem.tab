@@ -1,4 +1,5 @@
-create table DESENV.MERC_LIVRE_ORDEM
+-- Create table
+create table MERC_LIVRE_ORDEM
 (
   merc_livre_ordem_id    VARCHAR2(20) not null,
   unidade_empresarial_id VARCHAR2(20),
@@ -38,7 +39,10 @@ create table DESENV.MERC_LIVRE_ORDEM
   mlor_pagto_ml_status   VARCHAR2(40),
   mlor_pagto_ml_vlr      NUMBER(10,2),
   mlor_pagto_ml_dt_proc  DATE,
-  mlor_xml_dt_envio      DATE
+  mlor_xml_dt_envio      DATE,
+  mlor_venda_id          VARCHAR2(100),
+  mlor_pagto_id          VARCHAR2(100),
+  mlor_recebe            VARCHAR2(500)
 )
 tablespace HORUSDATA
   pctfree 10
@@ -51,7 +55,8 @@ tablespace HORUSDATA
     minextents 1
     maxextents unlimited
   );
-alter table DESENV.MERC_LIVRE_ORDEM
+-- Create/Recreate primary, unique and foreign key constraints 
+alter table MERC_LIVRE_ORDEM
   add constraint PK_MERC_LIVRE_ORDEM_ID primary key (MERC_LIVRE_ORDEM_ID)
   using index
   tablespace USERS
@@ -65,7 +70,7 @@ alter table DESENV.MERC_LIVRE_ORDEM
     minextents 1
     maxextents unlimited
   );
-alter table DESENV.MERC_LIVRE_ORDEM
+alter table MERC_LIVRE_ORDEM
   add constraint UK_MLOR_ORDER_ID unique (MLOR_ORDER_ID)
   using index
   tablespace USERS
@@ -79,4 +84,3 @@ alter table DESENV.MERC_LIVRE_ORDEM
     minextents 1
     maxextents unlimited
   );
-

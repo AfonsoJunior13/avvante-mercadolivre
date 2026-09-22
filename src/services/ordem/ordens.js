@@ -19,9 +19,13 @@ async function ordensAtualizar() {
 
         const dadosFaturamento = await getDadosFaturamento(ordemID);
         const enderecoEntrega = await getEndereco(ordemID, shippingID);
+        const pagtoAprovado = (resOrdem.payments || []).find((p) => p.status === 'approved');
 
         const dadosOrdem = {
           ordem_id: resOrdem.id,
+          venda_id: resOrdem.pack_id || resOrdem.id,
+          pagto_id: pagtoAprovado?.id != null ? String(pagtoAprovado.id) : null,
+          recebe: enderecoEntrega.recebe || '',
           status: resOrdem.status,
           data_created: resOrdem.date_created,
           data_closed: resOrdem.date_closed,

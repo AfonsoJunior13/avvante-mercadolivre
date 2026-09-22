@@ -60,6 +60,9 @@ async function ordemUpdate(data) {
                         P_MLOR_VLR_FRETE: data.vlr_frete,
                         P_MLOR_VLR_TAXA_ML: data.vlr_taxa_ml,
                         P_MLOR_DESCONTO: data.vlr_desconto,
+                        P_MLOR_VENDA_ID: data.venda_id ?? null,
+                        P_MLOR_PAGTO_ID: data.pagto_id ?? null,
+                        P_MLOR_RECEBE: data.recebe ?? null,
                         P_TRANSACTION: 0
                     };
 
@@ -83,7 +86,10 @@ async function ordemUpdate(data) {
                                            :P_MLOR_NOME              , 
                                            :P_MLOR_VLR_FRETE         ,
                                            :P_MLOR_VLR_TAXA_ML       ,
-                                           :P_MLOR_DESCONTO          ,                                          
+                                           :P_MLOR_DESCONTO          ,
+                                           :P_MLOR_VENDA_ID          ,
+                                           :P_MLOR_PAGTO_ID          ,
+                                           :P_MLOR_RECEBE            ,
                                            :P_TRANSACTION            ); END;`,
                     binds
         );

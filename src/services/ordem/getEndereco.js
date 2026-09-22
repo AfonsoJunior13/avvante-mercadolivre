@@ -24,7 +24,8 @@ async function getEndereco(ordem_id, shippingID) {
       bairro: receiver?.neighborhood?.name || '',
       cidade: receiver?.city?.name || '',
       uf: receiver?.state?.name || '',
-      cep: receiver?.zip_code || ''
+      cep: receiver?.zip_code || '',
+      recebe: receiver?.receiver_name || ''
     };
   } catch (errShip) {
     console.error(`Erro ao buscar endereço do shippingID ${shippingID}:`, errShip?.response?.data || errShip);
