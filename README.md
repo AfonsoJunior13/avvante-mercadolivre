@@ -99,7 +99,7 @@ Os jobs ficam agendados pelo `node-cron` enquanto o processo estiver no ar.
 
 ### Serviço do Windows
 
-Para subir com o sistema e reiniciar se o processo cair, instale como serviço. Abra o PowerShell **como Administrador**, na raiz do projeto:
+Para subir com o sistema e reiniciar se o processo cair, dê dois cliques em `instalar-servico.bat` (pede permissão de administrador). No PowerShell como Administrador, o equivalente é:
 
 ```bash
 npm run service:install

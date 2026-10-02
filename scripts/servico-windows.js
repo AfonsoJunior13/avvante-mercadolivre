@@ -35,7 +35,7 @@ function isAdmin() {
 
 function requireAdmin() {
   if (isAdmin()) return;
-  console.error('Execute este comando em um PowerShell ou prompt aberto como Administrador.');
+  console.error('Execute instalar-servico.bat ou abra o prompt como Administrador.');
   console.error('Exemplo: npm run service:install');
   process.exit(1);
 }

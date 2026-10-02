@@ -841,7 +841,7 @@ Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 
 O worker sobe como serviço pelo script `scripts/servico-windows.js` (WinSW 1.17 em `scripts/winsw`). Nome: **Horus Mercado Livre** (id `horusmercadolivre`).
 
-Instalação em PowerShell **como administrador**, na raiz do projeto:
+Instalação: dois cliques em `instalar-servico.bat` (eleva sozinho) ou, em PowerShell **como administrador**:
 
 ```bash
 npm run service:install
