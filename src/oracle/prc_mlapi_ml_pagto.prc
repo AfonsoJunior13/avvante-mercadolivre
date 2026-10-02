@@ -1,4 +1,4 @@
-create or replace procedure desenv.PRC_MLAPI_ML_PAGTO
+create or replace procedure PRC_MLAPI_ML_PAGTO
 (
   P_UNIDADE_EMPRESARIAL_ID in  MERC_LIVRE_ORDEM.UNIDADE_EMPRESARIAL_ID %type,
   P_MLOR_ORDER_ID          in  MERC_LIVRE_ORDEM.MLOR_ORDER_ID          %type,
@@ -25,7 +25,8 @@ begin
    
    -- Pedido já gerado não requer modificações...
    if V_MERC_LIVRE_ORDEM_ID is not null then
-     Raise_application_error(-20000, 'Ordem não encontrada');
+     return;
+     --Raise_application_error(-20000, 'Ordem não encontrada');
    end if;
    
    update MERC_LIVRE_ORDEM
@@ -43,4 +44,3 @@ begin
 
 end PRC_MLAPI_ML_PAGTO;
 /
-

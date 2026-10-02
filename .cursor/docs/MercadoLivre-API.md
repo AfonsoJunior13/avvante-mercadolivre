@@ -418,7 +418,7 @@ Documentação consultada via MCP em junho/2026. Esta seção trata do **repasse
 - Campo `expiration_date` da order: após essa data, *“os pagamentos são emitidos (caso houver) e os encargos são criados”*
 - Notificação tópico **`payments`** → consultar `GET /collections/{payment_id}`
 
-**Campos já usados no Horus** (`ordens.js`): `vlr_total`, `vlr_frete`, `vlr_taxa_ml` (`marketplace_fee`), `vlr_desconto`.
+**Campos já usados no Horus** (`ordens.js`): `vlr_total`, `vlr_frete`, `vlr_taxa_ml` (`marketplace_fee`), `vlr_desconto`, `date_approved` do pagamento `approved` → `MLOR_DT_PAGTO_APROVADO`.
 
 ### 9.3 Relatórios de Faturamento
 

@@ -63,6 +63,7 @@ async function ordemUpdate(data) {
                         P_MLOR_VENDA_ID: data.venda_id ?? null,
                         P_MLOR_PAGTO_ID: data.pagto_id ?? null,
                         P_MLOR_RECEBE: data.recebe ?? null,
+                        P_MLOR_DT_PAGTO_APROVADO: data.dt_pagto_aprovado ? new Date(data.dt_pagto_aprovado) : null,
                         P_TRANSACTION: 0
                     };
 
@@ -90,6 +91,7 @@ async function ordemUpdate(data) {
                                            :P_MLOR_VENDA_ID          ,
                                            :P_MLOR_PAGTO_ID          ,
                                            :P_MLOR_RECEBE            ,
+                                           :P_MLOR_DT_PAGTO_APROVADO ,
                                            :P_TRANSACTION            ); END;`,
                     binds
         );

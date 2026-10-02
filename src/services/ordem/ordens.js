@@ -25,6 +25,7 @@ async function ordensAtualizar() {
           ordem_id: resOrdem.id,
           venda_id: resOrdem.pack_id || resOrdem.id,
           pagto_id: pagtoAprovado?.id != null ? String(pagtoAprovado.id) : null,
+          dt_pagto_aprovado: pagtoAprovado?.date_approved || null,
           recebe: enderecoEntrega.recebe || '',
           status: resOrdem.status,
           data_created: resOrdem.date_created,

@@ -322,6 +322,7 @@ Importação **ML → Horus** de vendas pagas. Orquestrador: `ordens.js` → `ge
 1. `getOrdensAll()` — IDs elegíveis na janela `ORDEM_DIAS` (paginado).
 2. Para cada ID → `getOrdem` + `getDadosFaturamento` + `getEndereco`.
 3. Persistência: `ordemUpdate` / `ordemEndUpdate` / `ordemItemUpdate`.
+4. Data de pagamento aprovado: `payments[].date_approved` (status `approved`) → `MLOR_DT_PAGTO_APROVADO` via `P_MLOR_DT_PAGTO_APROVADO`.
 
 Erro em uma ordem não interrompe o lote (`try/catch` + `logger.logError`).
 

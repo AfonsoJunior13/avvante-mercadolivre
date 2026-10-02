@@ -21,6 +21,7 @@ create or replace procedure PRC_MLAPI_ORDEM_UPDATE
   P_MLOR_VENDA_ID          in  MERC_LIVRE_ORDEM.MLOR_VENDA_ID          %type,
   P_MLOR_PAGTO_ID          in  MERC_LIVRE_ORDEM.MLOR_PAGTO_ID          %type,
   P_MLOR_RECEBE            in  MERC_LIVRE_ORDEM.MLOR_RECEBE            %type,
+  P_MLOR_DT_PAGTO_APROVADO in  MERC_LIVRE_ORDEM.MLOR_DT_PAGTO_APROVADO %type,
   
   P_TRANSACTION            in  number
 
@@ -45,8 +46,8 @@ begin
    
    -- Pedido já gerado não requer modificações...
    if V_PEDIDO_SAIDA_ID is not null then
-     --return;
-     Raise_application_error(-20000, 'Pedido Gerado.');
+     return;
+     --Raise_application_error(-20000, 'Pedido Gerado.');
    end if;
    
    if V_MERC_LIVRE_ORDEM_ID is null then
@@ -63,6 +64,7 @@ begin
                                   MLOR_VLR_FRETE         ,MLOR_VLR_TAXA_ML  ,
                                   MLOR_DESCONTO          ,MLOR_VENDA_ID     ,
                                   MLOR_PAGTO_ID          ,MLOR_RECEBE       ,
+                                  MLOR_DT_PAGTO_APROVADO ,
                                   USUARIO_INCLUSAO       ,DATA_INCLUSAO     ,
                                   STATUS                 )
 
@@ -77,31 +79,33 @@ begin
                                   P_MLOR_VLR_FRETE         ,P_MLOR_VLR_TAXA_ML  ,
                                   P_MLOR_DESCONTO          ,P_MLOR_VENDA_ID     ,
                                   P_MLOR_PAGTO_ID          ,P_MLOR_RECEBE       ,
+                                  P_MLOR_DT_PAGTO_APROVADO ,
                                   'UserSystem'             ,sysdate             ,
                                   'Ativo'                  );
    else
      update MERC_LIVRE_ORDEM
-        set MLOR_STATUS       = P_MLOR_STATUS,
-            MLOR_DATE_CREATED = P_MLOR_DATE_CREATED,
-            MLOR_DATE_CLOSED  = P_MLOR_DATE_CLOSED,
-            MLOR_VALOR        = P_MLOR_VALOR,
-            MLOR_ENDERECO     = P_MLOR_ENDERECO,
-            MLOR_NUMERO       = P_MLOR_NUMERO,
-            MLOR_COMPLEMENTO  = P_MLOR_COMPLEMENTO,
-            MLOR_BAIRRO       = P_MLOR_BAIRRO,
-            MLOR_CIDADE       = P_MLOR_CIDADE,
-            MLOR_UF           = P_MLOR_UF,
-            MLOR_CEP          = P_MLOR_CEP,
-            MLOR_CPF_CNPJ     = P_MLOR_CPF_CNPJ,
-            MLOR_NOME         = P_MLOR_NOME,
-            MLOR_VLR_FRETE    = P_MLOR_VLR_FRETE,
-            MLOR_VLR_TAXA_ML  = P_MLOR_VLR_TAXA_ML,
-            MLOR_DESCONTO     = P_MLOR_DESCONTO,
-            MLOR_VENDA_ID     = P_MLOR_VENDA_ID,
-            MLOR_PAGTO_ID     = P_MLOR_PAGTO_ID,
-            MLOR_RECEBE       = P_MLOR_RECEBE,
-            DATA_ALTERACAO    = sysdate,
-            USUARIO_ALTERACAO = 'UserSystem'
+        set MLOR_STATUS            = P_MLOR_STATUS,
+            MLOR_DATE_CREATED      = P_MLOR_DATE_CREATED,
+            MLOR_DATE_CLOSED       = P_MLOR_DATE_CLOSED,
+            MLOR_VALOR             = P_MLOR_VALOR,
+            MLOR_ENDERECO          = P_MLOR_ENDERECO,
+            MLOR_NUMERO            = P_MLOR_NUMERO,
+            MLOR_COMPLEMENTO       = P_MLOR_COMPLEMENTO,
+            MLOR_BAIRRO            = P_MLOR_BAIRRO,
+            MLOR_CIDADE            = P_MLOR_CIDADE,
+            MLOR_UF                = P_MLOR_UF,
+            MLOR_CEP               = P_MLOR_CEP,
+            MLOR_CPF_CNPJ          = P_MLOR_CPF_CNPJ,
+            MLOR_NOME              = P_MLOR_NOME,
+            MLOR_VLR_FRETE         = P_MLOR_VLR_FRETE,
+            MLOR_VLR_TAXA_ML       = P_MLOR_VLR_TAXA_ML,
+            MLOR_DESCONTO          = P_MLOR_DESCONTO,
+            MLOR_VENDA_ID          = P_MLOR_VENDA_ID,
+            MLOR_PAGTO_ID          = P_MLOR_PAGTO_ID,
+            MLOR_RECEBE            = P_MLOR_RECEBE,
+            MLOR_DT_PAGTO_APROVADO = P_MLOR_DT_PAGTO_APROVADO,
+            DATA_ALTERACAO         = sysdate,
+            USUARIO_ALTERACAO      = 'UserSystem'
       where MERC_LIVRE_ORDEM_ID = V_MERC_LIVRE_ORDEM_ID;
    end if;
 

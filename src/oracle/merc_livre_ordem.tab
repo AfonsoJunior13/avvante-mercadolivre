@@ -42,7 +42,9 @@ create table MERC_LIVRE_ORDEM
   mlor_xml_dt_envio      DATE,
   mlor_venda_id          VARCHAR2(100),
   mlor_pagto_id          VARCHAR2(100),
-  mlor_recebe            VARCHAR2(500)
+  mlor_recebe            VARCHAR2(500),
+  mlor_dt_pagto_aprovado DATE,
+  mlor_dt_pagto_aprovado DATE
 )
 tablespace HORUSDATA
   pctfree 10
