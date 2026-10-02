@@ -205,20 +205,20 @@ Chamadas HTTP à API ML: usar **`mlApi.get(rotina, url, config)`** ou **`mlApi.r
 
 Arquivo: `src/jobs/execJobs.js`
 
-| Função | Cron (planejado) | Cron ativo hoje | Service |
-|--------|------------------|-----------------|---------|
-| `refreshToken` | `*/30 * * * *` | **comentado** | `services/token/getToken.js` |
-| `tpAnuncioSave` | `0 */12 * * *` | **comentado** | `services/tpAnuncio/tpAnuncios.js` |
-| `categoriasSave` | `0 */12 * * *` | **comentado** | `services/categoria/categorias.js` |
-| `produtosSave` | `*/5 * * * *` | **comentado** | `services/produto/produtos.js` |
-| `ordensSave` | `*/5 * * * *` | **comentado** | `services/ordem/ordens.js` |
-| `ordemPagtoSave` | (não definido) | **sem cron** | `services/ordem/ordemPagto.js` |
-| `ordemNfeSave` | (não definido) | **sem cron** | `services/ordem/ordemNfe.js` |
-| `perguntasSave` | `*/5 * * * *` | **comentado** | `services/pergunta/perguntas.js` |
-| `anunciosSave` | `*/5 * * * *` | **comentado** | `services/anuncio/anuncios.js` |
-| `estoqueSave` | `*/5 * * * *` | **comentado** | `services/estoque/estoques.js` |
+| Função | Cron | Cron ativo hoje | Service |
+|--------|------|-----------------|---------|
+| `refreshToken` | `*/30 * * * *` | **ativo** | `services/token/getToken.js` |
+| `tpAnuncioSave` | `0 */12 * * *` | **ativo** | `services/tpAnuncio/tpAnuncios.js` |
+| `categoriasSave` | `0 */12 * * *` | **ativo** | `services/categoria/categorias.js` |
+| `produtosSave` | `*/5 * * * *` | **ativo** | `services/produto/produtos.js` |
+| `ordensSave` | `*/5 * * * *` | **ativo** | `services/ordem/ordens.js` |
+| `ordemPagtoSave` | `*/5 * * * *` | **ativo** | `services/ordem/ordemPagto.js` |
+| `ordemNfeSave` | `*/5 * * * *` | **ativo** | `services/ordem/ordemNfe.js` |
+| `perguntasSave` | `*/5 * * * *` | **ativo** | `services/pergunta/perguntas.js` |
+| `anunciosSave` | `*/5 * * * *` | **ativo** | `services/anuncio/anuncios.js` |
+| `estoqueSave` | `*/5 * * * *` | **ativo** | `services/estoque/estoques.js` |
 
-**Estado atual:** na subida, `Iniciar()` executa **todos** os jobs **uma vez** em sequência (`token → tpAnuncio → categoria → anuncio → produto → estoque → ordem → ordemPagto → ordemNfe → pergunta`). Os `cron.schedule` estão **todos comentados** — o processo fica ocioso após a primeira rodada até ser reiniciado ou até alguém descomentar os crons.
+**Estado atual:** `Iniciar()` está comentado (não roda na subida). Os `cron.schedule` estão ativos — o processo permanece no ar e dispara cada job no intervalo. Para executar uma rodada completa ao iniciar, descomentar a chamada `Iniciar()` em `execJobs.js`.
 
 Para novo job: criar função async + `cron.schedule` + exportar lógica no service correspondente + incluir chamada em `Iniciar()`.
 
@@ -837,16 +837,33 @@ npm start
 
 Oracle local opcional: `docker compose up -d` (Oracle XE 21, porta 1521).
 
+### Serviço Windows
+
+O worker sobe como serviço pelo script `scripts/servico-windows.js` (WinSW 1.17 em `scripts/winsw`). Nome: **Horus Mercado Livre** (id `horusmercadolivre`).
+
+Instalação em PowerShell **como administrador**, na raiz do projeto:
+
+```bash
+npm run service:install
+```
+
+Comandos: `service:status`, `service:start`, `service:stop`, `service:restart`, `service:uninstall`.
+
+- Conta **Local System**, início atrasado (`delayed-auto`). Diretório de trabalho: raiz do projeto. `.env` carregado por caminho absoluto em `app.js`.
+- Se o processo encerrar, o WinSW reinicia (10 s, 30 s, 60 s).
+- Logs da rotina: `logs/exec/`. Logs do wrapper: `logs/servico/`.
+- Arquivos gerados em `daemon/` (não versionar). O binário do wrapper em `scripts/winsw/` entra no repositório.
+
 ---
 
 ## Pontos de atenção / débitos técnicos conhecidos
 
 1. **`findToken.js`** — `code_verifier` está como literal `'$CODE_VERIFIER'` (placeholder); fluxo OAuth inicial pode precisar de ajuste para PKCE real.
 2. **`ordens.js`** — itens do pedido gravam `sku: '0'` e `gtin: '0'` fixos (não extrai do produto; SKU/GTIN **são** extraídos em `produtos.js`).
-3. **Crons desabilitados** — todos os `cron.schedule` em `execJobs.js` estão comentados; sincronização periódica só ocorre se o processo for reiniciado ou os crons forem reativados.
+3. **`Iniciar()` comentado** — a primeira rodada completa não ocorre na subida; cada job espera o próprio cron.
 4. **`PRC_MLAPI_ML_PAGTO`** — lógica invertida no script `prc_mlapi_ml_pagto.prc`: quando a ordem **é** encontrada, dispara `ORA-20000` com mensagem "Ordem não encontrada"; quando **não** encontra, tenta `UPDATE` com ID nulo. **Corrigir no Oracle** antes de usar repasse em produção.
-5. **`ordemPagtoSave`** — sem cron definido (nem comentado); roda apenas na subida via `Iniciar()`.
-6. **`ordemNfeSave`** — sem cron definido; roda apenas na subida via `Iniciar()`.
+5. **`ordemPagtoSave`** — cron `*/5 * * * *`.
+6. **`ordemNfeSave`** — cron `*/5 * * * *`.
 7. **Sem testes** — validar manualmente contra API ML e banco Horus.
 8. **Conexão por operação** — cada repository abre/fecha conexão; não há pool compartilhado.
 9. **OAuth `MLCN_CODE`** — após primeira troca, o code expira; tentativa de `findToken` gera `invalid_grant` (ruído no log) se o code antigo permanecer no banco; o refresh costuma resolver.

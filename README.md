@@ -92,12 +92,30 @@ Cadastre os parâmetros da integração na tabela `MERC_LIVRE_CONFIG` para a uni
 
 ```bash
 npm install
-node src/app.js
+npm start
 ```
 
-No Windows, também é possível usar o script `Iniciar.bat`.
+Os jobs ficam agendados pelo `node-cron` enquanto o processo estiver no ar.
 
-Ao iniciar, o serviço executa **todos os jobs imediatamente** e depois mantém a sincronização via cron.
+### Serviço do Windows
+
+Para subir com o sistema e reiniciar se o processo cair, instale como serviço. Abra o PowerShell **como Administrador**, na raiz do projeto:
+
+```bash
+npm run service:install
+```
+
+| Comando | Ação |
+|---------|------|
+| `npm run service:status` | Consulta o estado |
+| `npm run service:start` | Inicia |
+| `npm run service:stop` | Para |
+| `npm run service:restart` | Reinicia |
+| `npm run service:uninstall` | Remove o serviço |
+
+O serviço se chama **Horus Mercado Livre** (`horusmercadolivre`). Roda como Local System, com início atrasado, e o diretório de trabalho é a raiz do projeto. O `.env` e a pasta do Oracle Instant Client precisam ser legíveis por essa conta.
+
+Logs da rotina: `logs/exec`. Logs do wrapper: `logs/servico`.
 
 ## Jobs agendados
 
