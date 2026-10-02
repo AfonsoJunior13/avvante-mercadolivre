@@ -12,8 +12,8 @@ const { execFileSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const DAEMON_DIR = path.join(ROOT, 'daemon');
 const WINSW_DIR = path.join(__dirname, 'winsw');
-const SERVICE_ID = 'horusmercadolivre';
-const SERVICE_NAME = 'Horus Mercado Livre';
+const SERVICE_ID = 'avvantemercadolivre';
+const SERVICE_NAME = 'avvantemercadolivre';
 const EXE = path.join(DAEMON_DIR, `${SERVICE_ID}.exe`);
 const XML = path.join(DAEMON_DIR, `${SERVICE_ID}.xml`);
 

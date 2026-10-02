@@ -113,7 +113,7 @@ npm run service:install
 | `npm run service:restart` | Reinicia |
 | `npm run service:uninstall` | Remove o serviço |
 
-O serviço se chama **Horus Mercado Livre** (`horusmercadolivre`). Roda como Local System, com início atrasado, e o diretório de trabalho é a raiz do projeto. O `.env` e a pasta do Oracle Instant Client precisam ser legíveis por essa conta.
+O serviço se chama **avvantemercadolivre**. Roda como Local System, com início atrasado, e o diretório de trabalho é a raiz do projeto. O `.env` e a pasta do Oracle Instant Client precisam ser legíveis por essa conta.
 
 Logs da rotina: `logs/exec`. Logs do wrapper: `logs/servico`.
 
